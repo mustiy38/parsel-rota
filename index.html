@@ -227,31 +227,16 @@ const MERKEZ={lat:38.7205,lon:35.4826};
 const KEY="kpr-v2", LKEY="kpr-lists-v1";
 const $=id=>document.getElementById(id);
 
-/* ---------- TKGM servisi ---------- */
+/* ---------- TKGM servisi (dogrudan, araci yok) ---------- */
 const API_BASES=["https://cbsapi.tkgm.gov.tr/megsiswebapi.v3.1/api","https://cbsapi.tkgm.gov.tr/megsiswebapi.v3/api"];
-const PROXIES=[
-  {name:"doğrudan",wrap:u=>u},
-  {name:"corsproxy",wrap:u=>"https://corsproxy.io/?url="+encodeURIComponent(u)},
-  {name:"allorigins",wrap:u=>"https://api.allorigins.win/raw?url="+encodeURIComponent(u)},
-  {name:"codetabs",wrap:u=>"https://api.codetabs.com/v1/proxy?quest="+encodeURIComponent(u)}
-];
-let goodProxy=0;
-try{goodProxy=+(localStorage.getItem("kpr-proxy")||0)||0;}catch(e){}
-function proxyOrder(){const o=[];for(let i=0;i<PROXIES.length;i++)o.push((goodProxy+i)%PROXIES.length);return o;}
+const LIMIT_MSG="TKGM günlük sorgu limiti doldu. Limit TKGM tarafından her gün sıfırlanır; bugün konumu elle girebilir ya da Excel'deki hazır koordinatları kullanabilirsiniz.";
 async function fetchJSON(url){
-  let lastErr=null;
-  for(const i of proxyOrder()){
-    try{
-      const res=await fetch(PROXIES[i].wrap(url),{signal:AbortSignal.timeout(7000),cache:"no-store"});
-      if(res.status===404)return {notFound:true};
-      if(!res.ok)throw new Error("HTTP "+res.status);
-      const txt=await res.text();
-      const data=JSON.parse(txt);
-      if(goodProxy!==i){goodProxy=i;try{localStorage.setItem("kpr-proxy",String(i));}catch(e){}}
-      return {data};
-    }catch(e){lastErr=e;}
-  }
-  throw lastErr||new Error("Servise ulaşılamadı");
+  const res=await fetch(url,{signal:AbortSignal.timeout(20000),cache:"no-store"});
+  const txt=await res.text();
+  if(res.status===404)return {notFound:true};
+  if(res.status===403||/limit/i.test(txt.slice(0,200)))throw new Error(LIMIT_MSG);
+  if(!res.ok)throw new Error("TKGM yanıtı: HTTP "+res.status);
+  try{return {data:JSON.parse(txt)};}catch(e){throw new Error("TKGM beklenmeyen yanıt verdi");}
 }
 async function getJSON(path){
   let nf=false;
@@ -490,16 +475,25 @@ function fillMahalle(){
   if(arr.length===1)sel.value=String(arr[0].id);
 }
 async function onIlce(){
-  const id=$("ilce").value;mahalleAll=[];fillMahalle();
+  let id=$("ilce").value;mahalleAll=[];fillMahalle();
+  if(!id&&$("ilce").selectedIndex>0){await loadIlceOnce();const name=$("ilce").selectedOptions[0].text;const hit=findByName(lists.ilceler||[],name);if(hit){$("ilce").value=String(hit.id);id=String(hit.id);}}
   if(!id)return;
   $("mahalle").innerHTML="<option value=''>Mahalleler yükleniyor…</option>";
   try{mahalleAll=await ensureMahalle(id);fillMahalle();}
   catch(e){$("mahalle").innerHTML="<option value=''>Mahalle listesi alınamadı</option>";show($("addMsg"),"Mahalle listesi alınamadı: "+e.message,"err");}
 }
+let listsLoading=false;
 async function bootLists(){
   fillIlce();
-  try{await ensureIlceler();fillIlce();$("svcState").textContent="TKGM bağlı";}
-  catch(e){$("svcState").textContent="TKGM'ye ulaşılamadı";show($("addMsg"),"TKGM servisine şu an ulaşılamıyor ("+e.message+"). Konumu elle girerek devam edebilirsiniz; bağlantı gelince sorgu yeniden denenir.","err");}
+  if(lists.ilceler&&lists.ilceler.length){$("svcState").textContent="İlçe listesi hazır";return;}
+  $("svcState").textContent="İlçe listesi ilk seçimde TKGM'den alınır";
+}
+async function loadIlceOnce(){
+  if((lists.ilceler&&lists.ilceler.length)||listsLoading)return;
+  listsLoading=true;$("svcState").textContent="İlçe listesi alınıyor…";
+  try{await ensureIlceler();const v=$("ilce").value;fillIlce();$("ilce").value=v;$("svcState").textContent="TKGM bağlı";}
+  catch(e){$("svcState").textContent="TKGM'ye ulaşılamadı";show($("addMsg"),e.message,"err");}
+  finally{listsLoading=false;}
 }
 
 /* ---------- Ekleme ---------- */
@@ -513,7 +507,7 @@ function clearForm(){["ada","parsel","not","konum"].forEach(i=>$(i).value="");}
 $("findBtn").onclick=async()=>{
   const f=readForm();
   if(!f.ada||!f.parsel){show($("addMsg"),"Ada ve parsel numarası gerekli.","err");return;}
-  if(!f.mahalleId){show($("addMsg"),"İlçe ve mahalle seçin. Mahalle listesi gelmediyse servis kapalı olabilir; konumu elle girebilirsiniz.","err");return;}
+  if(!f.mahalleId){show($("addMsg"),"İlçe ve mahalle seçin. Mahalle listesi gelmediyse TKGM yanıt vermiyor olabilir; konumu elle girebilirsiniz.","err");return;}
   const btn=$("findBtn");btn.disabled=true;show($("addMsg"),"TKGM'den sorgulanıyor…");
   try{
     const r=await queryParsel(f.mahalleId,f.ada,f.parsel);
@@ -654,6 +648,7 @@ function checkHash(){
 
 /* ---------- Diger ---------- */
 $("ilce").onchange=onIlce;
+$("ilce").addEventListener("focus",loadIlceOnce);$("ilce").addEventListener("touchstart",loadIlceOnce,{passive:true});
 $("mahalleFiltre").oninput=fillMahalle;
 $("clearBtn").onclick=()=>{$("clearConfirm").hidden=false;};
 $("clearNo").onclick=()=>{$("clearConfirm").hidden=true;};
