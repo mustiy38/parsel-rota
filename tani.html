@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Parsel Rota Tanı</title>
+<style>
+body{margin:0;padding:16px;font:16px/1.4 system-ui,sans-serif;background:#EAF1EF;color:#12302A}
+h1{font-size:22px;margin:0 0 8px}
+p{margin:0 0 12px;color:#55706A;font-size:14px}
+button{font:inherit;font-weight:700;padding:12px 16px;border-radius:10px;border:1px solid #C9D8D3;background:#134A40;color:#fff;margin:0 8px 8px 0}
+button.alt{background:#fff;color:#12302A}
+textarea{width:100%;height:60vh;font:13px/1.35 ui-monospace,Menlo,monospace;border:1px solid #C9D8D3;border-radius:10px;padding:10px;box-sizing:border-box;background:#fff;color:#12302A}
+#st{font-weight:700;margin-bottom:8px}
+</style>
+</head>
+<body>
+<h1>Parsel Rota Tanı</h1>
+<p>Bu sayfa hangi servisin telefondan çalıştığını ölçer. Testi başlatın, bitince sonucu kopyalayıp sohbete yapıştırın.</p>
+<button id="run">Testi başlat</button>
+<button id="copy" class="alt">Sonucu kopyala</button>
+<div id="st"></div>
+<textarea id="out" readonly placeholder="Sonuçlar burada görünecek"></textarea>
+<script>
+(function(){
+const out=document.getElementById("out"),st=document.getElementById("st");
+const log=s=>{out.value+=s+"\n";out.scrollTop=out.scrollHeight;};
+const TK="https://cbsapi.tkgm.gov.tr/megsiswebapi.v3.1/api/idariYapi/ilceListe/38";
+const PROXIES=[
+ ["doğrudan",u=>u],
+ ["corsproxy.io",u=>"https://corsproxy.io/?url="+encodeURIComponent(u)],
+ ["corsproxy.io eski",u=>"https://corsproxy.io/?"+u],
+ ["allorigins raw",u=>"https://api.allorigins.win/raw?url="+encodeURIComponent(u)],
+ ["allorigins get",u=>"https://api.allorigins.win/get?url="+encodeURIComponent(u)],
+ ["codetabs",u=>"https://api.codetabs.com/v1/proxy?quest="+encodeURIComponent(u)],
+ ["cors.lol",u=>"https://api.cors.lol/?url="+encodeURIComponent(u)],
+ ["corsfix",u=>"https://proxy.corsfix.com/?"+u],
+ ["thingproxy",u=>"https://thingproxy.freeboard.io/fetch/"+u],
+ ["cors.eu.org",u=>"https://cors.eu.org/"+u],
+ ["jina reader",u=>"https://r.jina.ai/"+u]
+];
+async function tryFetch(name,url,ms){
+  const t0=performance.now();
+  try{
+    const res=await fetch(url,{signal:AbortSignal.timeout(ms||20000),cache:"no-store"});
+    const txt=await res.text();
+    const dt=((performance.now()-t0)/1000).toFixed(1);
+    let kind="metin";
+    try{JSON.parse(txt);kind="JSON";}catch(e){}
+    log(`[${name}] HTTP ${res.status} · ${dt} s · ${kind} · ${txt.length} bayt · ${txt.slice(0,160).replace(/\s+/g," ")}`);
+    return {ok:res.ok,txt,status:res.status};
+  }catch(e){
+    const dt=((performance.now()-t0)/1000).toFixed(1);
+    log(`[${name}] HATA ${dt} s · ${e.name}: ${e.message}`);
+    return {ok:false,err:e};
+  }
+}
+async function arcgisWalk(base){
+  const r=await tryFetch("ArcGIS "+base,base+"?f=json",20000);
+  if(!r.ok)return;
+  let d;try{d=JSON.parse(r.txt);}catch(e){return;}
+  if(!d.services&&!d.folders){log("  (servis dizini değil)");return;}
+  const all=[];
+  const take=(obj,folder)=>{(obj.services||[]).forEach(s=>all.push({name:s.name,type:s.type,folder}));};
+  take(d,"");
+  log("  klasörler: "+(d.folders||[]).join(", "));
+  for(const f of (d.folders||[]).slice(0,40)){
+    const rr=await tryFetch("  klasör "+f,base+"/"+f+"?f=json",15000);
+    if(rr.ok){try{take(JSON.parse(rr.txt),f);}catch(e){}}
+  }
+  log("  toplam servis: "+all.length);
+  all.forEach(s=>log("   - "+s.name+" ("+s.type+")"));
+  const cand=all.filter(s=>/kadastro|parsel|tapu|mulk|mülk|imar|kent|rehber|genel|base|temel/i.test(s.name)&&/MapServer|FeatureServer/.test(s.type));
+  for(const s of cand.slice(0,12)){
+    const su=base+"/"+s.name+"/"+s.type;
+    const rr=await tryFetch("  servis "+s.name,su+"?f=json",15000);
+    if(!rr.ok)continue;
+    let sd;try{sd=JSON.parse(rr.txt);}catch(e){continue;}
+    const layers=(sd.layers||[]);
+    layers.forEach(l=>log("     katman "+l.id+": "+l.name));
+    const pl=layers.filter(l=>/parsel|kadastro|ada/i.test(l.name)).slice(0,4);
+    for(const l of pl){
+      const lr=await tryFetch("     katman "+l.id+" alanlar",su+"/"+l.id+"?f=json",15000);
+      if(lr.ok){try{const ld=JSON.parse(lr.txt);log("       geometri: "+ld.geometryType+" · alanlar: "+(ld.fields||[]).map(f=>f.name).join(", ")+" · sr: "+JSON.stringify((ld.extent||{}).spatialReference||""));}catch(e){}}
+      await tryFetch("     katman "+l.id+" örnek kayıt",su+"/"+l.id+"/query?where=1%3D1&outFields=*&resultRecordCount=1&returnGeometry=false&f=json",20000);
+    }
+  }
+}
+document.getElementById("run").onclick=async()=>{
+  out.value="";st.textContent="Çalışıyor…";
+  log("Tarih: "+new Date().toLocaleString("tr-TR")+" · Tarayıcı: "+navigator.userAgent);
+  log("");log("== TKGM ilçe listesi (Kayseri) ==");
+  for(const [n,w] of PROXIES){await tryFetch("TKGM "+n,w(TK),20000);}
+  log("");log("== TKGM v3 ==");
+  await tryFetch("TKGM v3 doğrudan","https://cbsapi.tkgm.gov.tr/megsiswebapi.v3/api/idariYapi/ilceListe/38",20000);
+  log("");log("== Kayseri Büyükşehir ArcGIS ==");
+  for(const b of ["https://arcgis.kayseri.bel.tr/arcgis/rest/services","https://arcgis.kayseri.bel.tr/server/rest/services","https://cbs.kayseri.bel.tr/arcgis/rest/services","https://cbsanaliz.kayseri.bel.tr/arcgis/rest/services"]){await arcgisWalk(b);}
+  await tryFetch("ArcGIS portal self","https://arcgis.kayseri.bel.tr/portal/sharing/rest/portals/self?f=json",15000);
+  log("");log("== Kayseri CBS sayfaları ==");
+  await tryFetch("KentRehberiMobil.aspx","https://cbs.kayseri.bel.tr/KentRehberiMobil.aspx",15000);
+  await tryFetch("Kent Rehberi (Yeni)","https://cbs.kayseri.bel.tr/Kayseri-Kent-Rehberi",15000);
+  log("");log("== BİTTİ ==");st.textContent="Bitti. Sonucu kopyalayıp sohbete yapıştırın.";
+};
+document.getElementById("copy").onclick=async()=>{
+  try{await navigator.clipboard.writeText(out.value);st.textContent="Kopyalandı.";}
+  catch(e){out.select();st.textContent="Metni seçip elle kopyalayın.";}
+};
+})();
+</script>
+</body>
+</html>
