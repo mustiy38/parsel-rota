@@ -247,18 +247,6 @@ summary{cursor:pointer;font-weight:700}
     <div class="legs" id="legs"></div>
   </section>
 
-  <section id="offline">
-    <h2>Çevrimdışı kullanım <small id="offSub"></small></h2>
-    <p class="hint">İlçeyi indirince parseller, tarla yolları dahil yol ağı ve düşük çözünürlüklü uydu altlığı telefonda kalır; internet çekmeyen yerde de arama ve navigasyon çalışır.</p>
-    <div class="row">
-      <select id="offIlce" style="flex:1 1 160px"></select>
-      <button class="primary" id="offBtn" type="button">İlçeyi indir</button>
-    </div>
-    <div class="bar" id="offBar" hidden><i id="offFill"></i></div>
-    <div id="offMsg" class="msg" hidden></div>
-    <div id="offList" class="hint"></div>
-  </section>
-
   <section id="excel">
     <h2>Excel ile toplu iş</h2>
     <p class="hint">Sütunlar: <span class="mono">İlçe, Mahalle, Ada, Parsel</span> (isteğe bağlı <span class="mono">Not, Enlem, Boylam</span>). Dosya seçilince parseller listeye eklenir, konumları bulunur ve en kısa ziyaret sırasına dizilir.</p>
@@ -271,6 +259,18 @@ summary{cursor:pointer;font-weight:700}
     </div>
     <div class="bar" id="bulkBar" hidden><i id="bulkFill"></i></div>
     <div id="bulkMsg" class="msg" hidden></div>
+  </section>
+
+  <section id="offline">
+    <h2>Çevrimdışı kullanım <small id="offSub"></small></h2>
+    <p class="hint">İlçeyi indirince parseller, tarla yolları dahil yol ağı ve düşük çözünürlüklü uydu altlığı telefonda kalır; internet çekmeyen yerde de arama ve navigasyon çalışır.</p>
+    <div class="row">
+      <select id="offIlce" style="flex:1 1 160px"></select>
+      <button class="primary" id="offBtn" type="button">İlçeyi indir</button>
+    </div>
+    <div class="bar" id="offBar" hidden><i id="offFill"></i></div>
+    <div id="offMsg" class="msg" hidden></div>
+    <div id="offList" class="hint"></div>
   </section>
 </div>
 
@@ -301,7 +301,7 @@ summary{cursor:pointer;font-weight:700}
 "use strict";
 const ILCELER_STATIK=["Akkışla","Bünyan","Develi","Felahiye","Hacılar","İncesu","Kocasinan","Melikgazi","Özvatan","Pınarbaşı","Sarıoğlan","Sarız","Talas","Tomarza","Yahyalı","Yeşilhisar"];
 const MERKEZ={lat:38.7205,lon:35.4826};
-const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", SURUM="r40 · 29.10.2026 19:45";
+const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", SURUM="r41 · 29.10.2026 20:25";
 const $=id=>document.getElementById(id);
 
 /* ---------- Giris kaydi (Google Formu) ---------- */
