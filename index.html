@@ -285,6 +285,7 @@ summary{cursor:pointer;font-weight:700}
     <button type="button" id="liveVoice" class="grow">Ses: açık</button>
     <button type="button" id="liveDraw" class="grow">Yol çiz</button>
     <button type="button" id="liveIz" class="grow gold" hidden>Geldiğim yolu kaydet</button>
+    <button type="button" id="liveAlt" class="grow" hidden>Diğer rota</button>
     <button type="button" id="liveNext" class="grow gold" hidden>Gidildi, sıradaki durağa geç</button>
   </div>
   <div class="livebtns row" id="liveBtnsDraw" hidden>
@@ -301,7 +302,7 @@ summary{cursor:pointer;font-weight:700}
 "use strict";
 const ILCELER_STATIK=["Akkışla","Bünyan","Develi","Felahiye","Hacılar","İncesu","Kocasinan","Melikgazi","Özvatan","Pınarbaşı","Sarıoğlan","Sarız","Talas","Tomarza","Yahyalı","Yeşilhisar"];
 const MERKEZ={lat:38.7205,lon:35.4826};
-const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", SURUM="r41 · 29.10.2026 20:25";
+const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", SURUM="r42 · 29.10.2026 21:00";
 const $=id=>document.getElementById(id);
 
 /* ---------- Giris kaydi (Google Formu) ---------- */
@@ -818,7 +819,7 @@ function rnParca(E,a0,a1){ // kenar uzerinde a0'dan a1'e (metre) noktalar
 function rnNoktalar(E){const p=new Array(E.la.length);for(let j=0;j<E.la.length;j++)p[j]=[E.la[j]/1e5,E.lo[j]/1e5];return p;}
 function rnKenarYon(E,from){const p=rnNoktalar(E);return E.u===from?p:p.reverse();}
 function rnKavsak(n){const s=new Set();for(const ei of rn.adj[n]){const E=rn.E[ei];s.add(E.u===n?E.v:E.u);if(s.size>=3)return true;}return false;}
-function rnRota(from,to){ // from -> to: {pts,dk,head,tail,kav} ya da null
+function rnRota(from,to,ceza){ // from -> to: {pts,dk,head,tail,kav,kenar,m} ya da null; ceza: alternatif icin kenar carpani
   const N=rn.nLa.length;if(!N)return null;
   let tc=rnYakin(to,1500,80);if(!tc.length)tc=rnYakin(to,5000,40);if(!tc.length)return null;
   let sc=rnYakin(from,300,6);if(!sc.length)sc=rnYakin(from,3000,10);if(!sc.length)return null;
@@ -829,46 +830,64 @@ function rnRota(from,to){ // from -> to: {pts,dk,head,tail,kav} ya da null
   const kx=111320*Math.cos(to.lat*Math.PI/180),ky=110574;
   const h=i=>{const dx=(rn.nLo[i]-to.lon)*kx,dy=(rn.nLa[i]-to.lat)*ky;return Math.sqrt(dx*dx+dy*dy);};
   const w=(c,d)=>(d<RN_YAKIN_M?RN_W_YAKIN:RN_W_UZAK)[c]||1.5;
+  const cz=ei=>ceza?(ceza.get(ei)||1):1;
   const tBy=new Map();
   for(const t of tc){const E=rn.E[t.e];const ek=(n,part)=>{let a=tBy.get(n);if(!a){a=[];tBy.set(n,a);}a.push({t,part});};ek(E.u,t.along);ek(E.v,E.len-t.along);}
   let best=Infinity,bi=null;
   const hs=hav(from,to)*1000;
-  sc.forEach((s,k)=>{const E=rn.E[s.e],ws=w(E.c,hs),app=s.d*RN_YAKLAS;
+  sc.forEach((s,k)=>{const E=rn.E[s.e],ws=w(E.c,hs)*cz(s.e),app=s.d*RN_YAKLAS;
     const rlx=(n,g)=>{if(g<dist[n]){dist[n]=g;srcK[n]=k;prevE[n]=-1;prevN[n]=-1;push(g+h(n),n);}};
     rlx(E.u,app+s.along*ws);rlx(E.v,app+(E.len-s.along)*ws);
-    for(const t of tc)if(t.e===s.e){const c=app+Math.abs(t.along-s.along)*w(E.c,0)+t.d*RN_YURU;if(c<best){best=c;bi={direct:true,s,t};}}});
+    for(const t of tc)if(t.e===s.e){const c=app+Math.abs(t.along-s.along)*w(E.c,0)*cz(s.e)+t.d*RN_YURU;if(c<best){best=c;bi={direct:true,s,t};}}});
   let say=0;
   while(hF.length){
     const [f,u]=pop();if(f>=best)break;const g=dist[u],hu=h(u);if(f-hu>g+1e-6)continue;
     if(++say>400000)break;
     const tl=tBy.get(u);
-    if(tl)for(const x of tl){const E=rn.E[x.t.e];const c=g+x.part*w(E.c,0)+x.t.d*RN_YURU;if(c<best){best=c;bi={node:u,t:x.t};}}
-    for(const ei of rn.adj[u]){const E=rn.E[ei];const v=E.u===u?E.v:E.u;const nd=g+E.len*w(E.c,hu);
+    if(tl)for(const x of tl){const E=rn.E[x.t.e];const c=g+x.part*w(E.c,0)*cz(x.t.e)+x.t.d*RN_YURU;if(c<best){best=c;bi={node:u,t:x.t};}}
+    for(const ei of rn.adj[u]){const E=rn.E[ei];const v=E.u===u?E.v:E.u;const nd=g+E.len*w(E.c,hu)*cz(ei);
       if(nd<dist[v]){dist[v]=nd;prevE[v]=ei;prevN[v]=u;srcK[v]=srcK[u];push(nd+h(v),v);}}
   }
   if(!bi)return null;
   // geometri
-  const pts=[],kav=[];let dk=0;const ekle=arr=>{for(const p of arr){const q=pts[pts.length-1];if(!q||Math.abs(q[0]-p[0])>1e-7||Math.abs(q[1]-p[1])>1e-7)pts.push(p);}};
+  const pts=[],kav=[],kenar=[];let dk=0,m=0;const ekle=arr=>{for(const p of arr){const q=pts[pts.length-1];if(!q||Math.abs(q[0]-p[0])>1e-7||Math.abs(q[1]-p[1])>1e-7)pts.push(p);}};
   const sure=(m,c)=>m/1000/(RN_V[c]||15)*60;
   let s,t;
-  if(bi.direct){s=bi.s;t=bi.t;const E=rn.E[s.e];ekle([[from.lat,from.lon]]);ekle(rnParca(E,s.along,t.along));dk+=sure(Math.abs(t.along-s.along),E.c);}
+  if(bi.direct){s=bi.s;t=bi.t;const E=rn.E[s.e];ekle([[from.lat,from.lon]]);ekle(rnParca(E,s.along,t.along));dk+=sure(Math.abs(t.along-s.along),E.c);kenar.push(s.e);m+=Math.abs(t.along-s.along);}
   else{
     t=bi.t;const yol=[];let n=bi.node;while(prevN[n]>=0){yol.push(prevE[n]);n=prevN[n];}yol.reverse();
     s=sc[srcK[n]];const SE=rn.E[s.e];
     ekle([[from.lat,from.lon]]);
-    if(n===SE.u){ekle(rnParca(SE,s.along,0));dk+=sure(s.along,SE.c);}else{ekle(rnParca(SE,s.along,SE.len));dk+=sure(SE.len-s.along,SE.c);}
+    if(n===SE.u){ekle(rnParca(SE,s.along,0));dk+=sure(s.along,SE.c);m+=s.along;}else{ekle(rnParca(SE,s.along,SE.len));dk+=sure(SE.len-s.along,SE.c);m+=SE.len-s.along;}
+    kenar.push(s.e);
     let cur=n;
-    for(const ei of yol){const E=rn.E[ei];if(rnKavsak(cur))kav.push(pts.length-1);ekle(rnKenarYon(E,cur));dk+=sure(E.len,E.c);cur=E.u===cur?E.v:E.u;}
+    for(const ei of yol){const E=rn.E[ei];if(rnKavsak(cur))kav.push(pts.length-1);ekle(rnKenarYon(E,cur));dk+=sure(E.len,E.c);m+=E.len;kenar.push(ei);cur=E.u===cur?E.v:E.u;}
     const TE=rn.E[t.e];if(rnKavsak(cur))kav.push(pts.length-1);
-    if(cur===TE.u){ekle(rnParca(TE,0,t.along));dk+=sure(t.along,TE.c);}else{ekle(rnParca(TE,TE.len,t.along));dk+=sure(TE.len-t.along,TE.c);}
+    if(cur===TE.u){ekle(rnParca(TE,0,t.along));dk+=sure(t.along,TE.c);m+=t.along;}else{ekle(rnParca(TE,TE.len,t.along));dk+=sure(TE.len-t.along,TE.c);m+=TE.len-t.along;}
+    if(kenar[kenar.length-1]!==t.e)kenar.push(t.e);
   }
   ekle([[to.lat,to.lon]]);
   dk+=(s.d+t.d)/1000/4*60;
-  return {pts,dk,head:s.d,tail:t.d,kav};
+  return {pts,dk,head:s.d,tail:t.d,kav,kenar,m};
 }
-function rnBagla(pt){ // noktayi 30 m icindeki en yakin kenara sanal dugumle baglar
+function rnAlternatifler(from,to,best,adet){ // en kisa rotadan belirgin farkli, makul uzunlukta en fazla 'adet' rota
+  const out=[],ceza=new Map();
+  const cezala=r=>r.kenar.forEach(e=>ceza.set(e,(ceza.get(e)||1)*4));
+  const ortak=(a,b)=>{const s=new Set(b.kenar);let o=0,t=0;for(const e of a.kenar){const L=rn.E[e].len;t+=L;if(s.has(e))o+=L;}return t?o/t:1;};
+  cezala(best);
+  for(let k=0;k<5&&out.length<adet;k++){
+    const r=rnRota(from,to,ceza);if(!r)break;
+    cezala(r);
+    if(r.dk>best.dk*1.35+3)break;
+    if(r.tail>best.tail+150)continue; // parsele cok daha uzun yurume: anlamsiz
+    if([best].concat(out).some(x=>ortak(r,x)>0.75||ortak(x,r)>0.75))continue;
+    out.push(r);
+  }
+  return out;
+}
+function rnBagla(pt,yaricap){ // noktayi yaricap (varsayilan 30 m) icindeki en yakin kenara sanal dugumle baglar
   const a=rnNode(Math.round(pt[0]*1e5),Math.round(pt[1]*1e5));
-  const y=rnYakin({lat:pt[0],lon:pt[1]},30,1)[0];
+  const y=rnYakin({lat:pt[0],lon:pt[1]},yaricap||30,1)[0];
   if(!y)return a;
   const E=rn.E[y.e];
   const q=rnNode(Math.round(y.lat*1e5),Math.round(y.lon*1e5));
@@ -886,8 +905,8 @@ function rnEkipYollari(){ // ekip yollari (cizilen tarla yollari): uclari ve yol
   team.roads.forEach(r=>{const P=r.pts;if(!P||P.length<2)return;const key=roadText(P);if(rn.team.has(key))return;
     if(!yuklu(P[0])||!yuklu(P[P.length-1]))return;
     rn.team.add(key);
-    const kes=[0];for(let i=1;i<P.length-1;i++)if(rnYakin({lat:P[i][0],lon:P[i][1]},20,1).length)kes.push(i);kes.push(P.length-1);
-    kes.forEach(i=>rnBagla(P[i]));
+    const kes=[0];for(let i=1;i<P.length-1;i++)if(rnYakin({lat:P[i][0],lon:P[i][1]},25,1).length)kes.push(i);kes.push(P.length-1);
+    kes.forEach((i,j)=>rnBagla(P[i],(j===0||j===kes.length-1)?50:25));
     for(let j=1;j<kes.length;j++){const seg=P.slice(kes[j-1],kes[j]+1);
       rnAddEdge(7,Int32Array.from(seg.map(p=>Math.round(p[0]*1e5))),Int32Array.from(seg.map(p=>Math.round(p[1]*1e5))));}});
 }
@@ -897,7 +916,7 @@ async function rnAgYukle(a,b,onProgress){ // iki nokta arasi karolar; alan genis
   else{await rnYukle([b],0.03,onProgress);await rnYukle([a],0.02,onProgress);}
   return (await rnAna())?0:1;
 }
-async function rnLeg(from,to,onProgress){ // tek bacak: uzun yolda internet varsa ilk kisim OSRM, parsele RN_GIRIS_KM kala hazir yol agi
+async function rnLeg(from,to,onProgress,alt){ // tek bacak: uzun yolda internet varsa ilk kisim OSRM, parsele RN_GIRIS_KM kala hazir yol agi; alt: diger rotalar da hesaplanir
   if(!(await rnHazir()))return null;
   let bas=from,on=null;
   if(hav(from,to)>RN_UZUN_KM&&navigator.onLine){
@@ -910,10 +929,12 @@ async function rnLeg(from,to,onProgress){ // tek bacak: uzun yolda internet vars
   try{await teamLoad();rnEkipYollari();}catch(e){}
   const r=rnRota(bas,to);
   if(!r)return null;
-  if(!on)return r;
+  const alts=alt?rnAlternatifler(bas,to,r,2):[];
+  if(!on){r.alts=alts;return r;}
   const n0=on.pts.length;
-  const kav=[];for(let i=1;i<n0;i++)kav.push(i);r.kav.forEach(i=>kav.push(n0+i));
-  return {pts:[[from.lat,from.lon]].concat(on.pts,r.pts.slice(1)),dk:on.dk+r.dk,head:on.head,tail:r.tail,kav};
+  const birlestir=x=>{const kav=[];for(let i=1;i<n0;i++)kav.push(i);x.kav.forEach(i=>kav.push(n0+i));
+    return {pts:[[from.lat,from.lon]].concat(on.pts,x.pts.slice(1)),dk:on.dk+x.dk,head:on.head,tail:x.tail,kav};};
+  const sonuc=birlestir(r);sonuc.alts=alts.map(birlestir);return sonuc;
 }
 function yolSonu(leg,p){ // bacagin arac yolundaki son noktasi (parsele yurume baslamadan once)
   if(leg&&leg.tail>8&&leg.pts&&leg.pts.length>1){const q=leg.pts[leg.pts.length-2];return {lat:q[0],lon:q[1]};}
@@ -1352,8 +1373,9 @@ async function ensureGraph(b,onProgress){
     const d=await fetchTile(la,lo);graphAdd(live.graph,d);live.tiles.add(la+","+lo);drawTracks(d);}
   await teamLoad();team.roads.forEach(r=>{r.inGraph=false;});teamToGraph(live.graph);teamDraw();
 }
-async function computeLeg(from,p,onProgress){ // from -> p (tek bacak)
-  try{const r=await rnLeg(from,p,onProgress);if(r)return finishLeg(r.pts,r.dk,r.head,r.tail,r.kav);}catch(e){console.warn("yol ağı",e);}
+async function computeLeg(from,p,onProgress,alt){ // from -> p (tek bacak); alt: diger rotalar da hesaplanir
+  try{const r=await rnLeg(from,p,onProgress,alt);
+    if(r){const leg=finishLeg(r.pts,r.dk,r.head,r.tail,r.kav);leg.alts=(r.alts||[]).map(a=>finishLeg(a.pts,a.dk,a.head,a.tail,a.kav));return leg;}}catch(e){console.warn("yol ağı",e);}
   const far=hav(from,p);
   if(far>15){
     const r=await osrmRoute([from,p.yol||p]);
@@ -1444,7 +1466,7 @@ function teamDraw(){
 const draw={on:false,pts:[],lyr:null};
 function drawUI(){$("liveBtnsNav").hidden=draw.on;$("liveBtnsDraw").hidden=!draw.on;}
 function drawRender(){draw.lyr.clearLayers();if(draw.pts.length)L.polyline(draw.pts,{color:"#FFEB3B",weight:4,opacity:.95}).addTo(draw.lyr);draw.pts.forEach(a=>L.circleMarker(a,{radius:5,color:"#fff",weight:2,fillColor:"#FFEB3B",fillOpacity:1}).addTo(draw.lyr));}
-function drawStart(){draw.on=true;draw.pts=[];live.follow=false;followUI();drawUI();drawRender();$("liveSub").textContent="Yol çizimi: haritada yolun üzerine sırayla dokunun (en az 2 nokta), sonra Yolu kaydet.";}
+function drawStart(){draw.on=true;draw.pts=[];live.follow=false;followUI();drawUI();drawRender();$("liveSub").textContent="Yol çizimi: kayıtlı bir yoldan başlayıp yol boyunca sırayla dokunun (en az 2 nokta), sonra Yolu kaydet.";}
 function drawStop(){draw.on=false;draw.pts=[];draw.lyr.clearLayers();drawUI();liveTick();}
 async function drawSave(){
   if(draw.pts.length<2){$("liveSub").textContent="En az iki nokta işaretleyin.";return;}
@@ -1552,15 +1574,36 @@ function drawStops(){
     L.marker([q.lat,q.lon],{icon:L.divIcon({className:"",html:`<div class="${cls}">${harf(i)}</div>`,iconSize:[sz,sz],iconAnchor:[sz/2,sz/2]})}).addTo(live.lyr).bindPopup(harf(i)+" · "+esc(label(q)));
     if(q.ring&&q.ring.length>2)L.polygon(q.ring,{color:"#AA8A5E",weight:2,fillColor:"#134A40",fillOpacity:.2}).addTo(live.lyr);});
 }
+/* ---------- Diger rotalar: haritada gri cizilir, dugmeyle ya da cizgiye dokunarak secilir ---------- */
+function liveSecenek(leg){live.secenek=leg?[leg].concat(leg.alts||[]):[];live.secIdx=0;liveAltUI();}
+function liveAltUI(){
+  const b=$("liveAlt"),S=live.secenek||[];b.hidden=S.length<2;
+  if(S.length>1){const fark=S[live.secIdx].total-S[0].total;
+    b.textContent=live.secIdx===0?`Diğer rota (${S.length-1})`:`Rota ${live.secIdx+1}/${S.length} · ${fark>=0?"+":"-"}${fmt(Math.abs(fark)/1000)} km`;}
+}
+function liveAltSec(k){
+  const S=live.secenek||[];if(S.length<2||draw.on)return;
+  live.secIdx=(k==null)?(live.secIdx+1)%S.length:k;
+  const leg=S[live.secIdx];live.legs[live.cur]=leg;live.offCount=0;live.said={};
+  liveAltUI();drawAllLegs();liveTick();
+  const fark=leg.total-S[0].total;
+  konus(live.secIdx===0?"En kısa rota seçildi.":`Diğer rota seçildi, ${fmt(Math.abs(fark)/1000)} kilometre daha ${fark>=0?"uzun":"kısa"}.`);
+}
+function drawAlts(){
+  (live.secenek||[]).forEach((leg,k)=>{if(k===live.secIdx||!leg)return;
+    const n=leg.pts.length,pts=leg.pts.slice(0,leg.tail>8?n-1:n);if(pts.length<2)return;
+    L.polyline(pts,{color:"#FFFFFF",weight:9,opacity:.3,interactive:false}).addTo(live.routeLyr);
+    L.polyline(pts,{color:"#78909C",weight:4,opacity:.95}).on("click",()=>liveAltSec(k)).addTo(live.routeLyr);});
+}
 function drawAllLegs(){
-  live.routeLyr.clearLayers();
+  live.routeLyr.clearLayers();drawAlts();
   live.legs.forEach((leg,i)=>{if(!leg||i<live.cur)return;drawLeg(leg,i===live.cur?"cur":"next");});
 }
 function liveOpen(p){liveStart([p]);}
 function liveStart(stops){
   liveInit();if(!live.map||!stops.length)return;
   Object.assign(live,{stops,cur:0,legs:new Array(stops.length).fill(null),legErr:new Array(stops.length).fill(""),legMsg:"",p:stops[0],first:true,offCount:0,busy:false,said:{},arrived:false,follow:true});
-  if(live.tracks)live.tracks.clearLayers();live.tiles=new Set();live.graph=null;live.routeLyr.clearLayers();live.rnCiz=new Set();live.rnNesil=rn.nesil;liveAgCiz();izSifirla();
+  if(live.tracks)live.tracks.clearLayers();live.tiles=new Set();live.graph=null;live.routeLyr.clearLayers();live.rnCiz=new Set();live.rnNesil=rn.nesil;liveAgCiz();izSifirla();liveSecenek(null);
   draw.on=false;draw.pts=[];if(draw.lyr)draw.lyr.clearLayers();drawUI();teamLoad().then(teamDraw);
   $("live").hidden=false;$("liveInfo").textContent="GPS bekleniyor…";$("liveInfo").className="info";$("liveSub").textContent="";$("liveNext").hidden=true;followUI();voiceUI();liveTitle();
   setTimeout(()=>live.map.invalidateSize(),50);
@@ -1583,9 +1626,9 @@ async function liveRecalc(all){
   $("liveSub").textContent="Rota hesaplanıyor…";
   try{
     const prog=(i,n)=>{$("liveSub").textContent=`Yol ağı yükleniyor ${i}/${n}…`;};
-    live.legs[cur]=await computeLeg(me,st[cur],prog);
+    live.legs[cur]=await computeLeg(me,st[cur],prog,true);
     if(live.stops!==st)return;
-    live.offCount=0;live.said={};liveAgCiz();drawAllLegs();
+    live.offCount=0;live.said={};liveSecenek(live.legs[cur]);liveAgCiz();drawAllLegs();
     if(live.first){live.first=false;live.map.fitBounds(live.legs[cur].pts,{padding:[40,40],maxZoom:17});}
     const t=live.legs[cur].total;konus(`${st.length>1?harf(cur)+" durağına ":""}rota hazır, ${t>=1000?fmt(t/1000)+" kilometre":fmtInt(t)+" metre"}.`);
     liveTick();
@@ -1599,7 +1642,7 @@ async function liveRecalc(all){
       }
       live.legMsg="";liveTick();
     }
-  }catch(e){live.legs[cur]=null;$("liveSub").textContent="Rota alınamadı: "+e.message+". Düz çizgiyi izleyin.";}
+  }catch(e){live.legs[cur]=null;liveSecenek(null);$("liveSub").textContent="Rota alınamadı: "+e.message+". Düz çizgiyi izleyin.";}
   finally{live.busy=false;liveTick();}
 }
 function liveUpdate(pos){
@@ -1644,7 +1687,7 @@ function liveTick(acc){
 function liveNextStop(){
   const p=live.p;if(!p)return;p.done=true;save();render();
   if(live.cur<live.stops.length-1){live.cur++;live.p=live.stops[live.cur];live.arrived=false;live.said={};live.offCount=0;live.first=false;$("liveNext").hidden=true;liveTitle();drawStops();
-    live.legs[live.cur]=null;drawAllLegs();liveRecalc(true);}
+    live.legs[live.cur]=null;liveSecenek(null);drawAllLegs();liveRecalc(true);}
   else{const sira=active();if(sira.length)liveStart(sira);else liveClose();}
 }
 $("liveClose").onclick=liveClose;
@@ -1653,6 +1696,7 @@ $("liveVoice").onclick=()=>{live.voice=!live.voice;voiceUI();if(live.voice)konus
 $("liveNext").onclick=liveNextStop;
 $("liveDraw").onclick=drawStart;
 $("liveIz").onclick=izKaydet;
+$("liveAlt").onclick=()=>liveAltSec();
 $("drawUndo").onclick=()=>{draw.pts.pop();drawRender();};
 $("drawSave").onclick=drawSave;
 $("drawCancel").onclick=drawStop;
