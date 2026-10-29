@@ -1,5 +1,5 @@
 /* Kayseri Parsel Rota - cevrimdisi calisma (service worker) */
-const SURUM = "r43";
+const SURUM = "r44";
 const KABUK = "kabuk-" + SURUM;
 const DINAMIK = "dinamik-v1";
 const UYDU = "uydu-v1";

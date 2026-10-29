@@ -138,7 +138,6 @@ summary{cursor:pointer;font-weight:700}
   <header>
     <span class="eyebrow">Kayseri İl Tarım ve Orman Müdürlüğü · Proje Birimi</span>
     <h1>Kayseri Parsel Rota</h1>
-    <p>İlçe, ada ve parseli yazın; mahalleyi seçin, yol tarifini alın.</p>
   </header>
 
   <div class="banner" id="shareBanner" hidden>
@@ -305,7 +304,7 @@ summary{cursor:pointer;font-weight:700}
 "use strict";
 const ILCELER_STATIK=["Akkışla","Bünyan","Develi","Felahiye","Hacılar","İncesu","Kocasinan","Melikgazi","Özvatan","Pınarbaşı","Sarıoğlan","Sarız","Talas","Tomarza","Yahyalı","Yeşilhisar"];
 const MERKEZ={lat:38.7205,lon:35.4826};
-const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", SURUM="r43 · 29.10.2026 22:20";
+const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", SURUM="r44 · 29.10.2026 22:35";
 const $=id=>document.getElementById(id);
 
 /* ---------- Giris kaydi (Google Formu) ---------- */
@@ -384,7 +383,7 @@ async function manifestAc(){ // anahtar dogrulanir, sifreli ilce listesi acilir
 }
 function veriUI(){
   const m=veri.manifest;if(!m)return;
-  if(veri.key){$("veriText").textContent=`· açık · ${m.ilceler.length} ilçe · ${fmtInt(m.toplam)} parsel · cihaz ${cihazId()}`;$("pwWrap").hidden=true;$("veriLock").hidden=false;$("svcState").textContent="";}
+  if(veri.key){$("veriText").textContent="· açık";$("pwWrap").hidden=true;$("veriLock").hidden=false;$("svcState").textContent="";}
   else{$("veriText").textContent="· kilitli";$("pwWrap").hidden=false;$("veriLock").hidden=true;$("svcState").textContent="";}
 }
 $("pwBtn").onclick=async()=>{
