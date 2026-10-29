@@ -702,9 +702,7 @@ async function osmTrackRoute(stops){
   let data=await idbGet(key);
   if(!data){
     const q=`[out:json][timeout:40];way(${bb.join(",")})["highway"~"^(track|path|unclassified|tertiary|secondary|primary|trunk|residential|service|living_street)$"];out geom;`;
-    const r=await fetch("https://overpass-api.de/api/interpreter",{method:"POST",body:"data="+encodeURIComponent(q),headers:{"Content-Type":"application/x-www-form-urlencoded"},signal:AbortSignal.timeout(45000)});
-    if(!r.ok)throw new Error("Overpass "+r.status);
-    data=await r.json();if(!data.elements||!data.elements.length)return null;
+    data=await overpassPost(q,45000);if(!data.elements||!data.elements.length)return null;
     await idbPut(key,data);
   }
   const g=buildGraph(data);if(g.nodes.size<2)return null;
@@ -1019,6 +1017,25 @@ window.addEventListener("online",()=>{state.items.forEach(p=>{if(p.yolHata)delet
 const YON=["kuzey","kuzeydoğu","doğu","güneydoğu","güney","güneybatı","batı","kuzeybatı"];
 function bearing(a,b){const r=Math.PI/180;const y=Math.sin((b.lon-a.lon)*r)*Math.cos(b.lat*r);const x=Math.cos(a.lat*r)*Math.sin(b.lat*r)-Math.sin(a.lat*r)*Math.cos(b.lat*r)*Math.cos((b.lon-a.lon)*r);return (Math.atan2(y,x)*180/Math.PI+360)%360;}
 const TILE=0.1;
+const OVERPASS=["https://overpass-api.de/api/interpreter","https://overpass.private.coffee/api/interpreter","https://maps.mail.ru/osm/tools/overpass/api/interpreter","https://overpass.kumi.systems/api/interpreter"];
+let overpassSira=0;
+async function overpassPost(q,ms,onWait){ // sunucu yogunsa (429/5xx/zaman asimi) sirayla yedek sunuculari dener
+  let son="";
+  for(let tur=0;tur<3;tur++){
+    for(let k=0;k<OVERPASS.length;k++){
+      const i=(overpassSira+k)%OVERPASS.length,url=OVERPASS[i];
+      try{
+        const r=await fetch(url,{method:"POST",body:"data="+encodeURIComponent(q),headers:{"Content-Type":"application/x-www-form-urlencoded"},signal:AbortSignal.timeout(ms)});
+        if(r.ok){const j=await r.json();overpassSira=i;return j;}
+        son=String(r.status);if(r.status===400)throw new Error("yol ağı sorgusu hatalı");
+      }catch(e){if(/hatalı/.test(e.message))throw e;son=e.name==="TimeoutError"?"zaman aşımı":"bağlantı";}
+      if(!navigator.onLine)throw new Error("internet bağlantısı koptu");
+    }
+    if(onWait)onWait(tur+1);await sleep(4000*(tur+1));
+  }
+  throw new Error("yol ağı sunucuları yanıt vermedi ("+son+")");
+}
+
 const EOX_URL="https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2020_3857/default/g/{z}/{y}/{x}.jpg";
 const EOX_ZMAX=14;
 const live={map:null,lyr:null,tracks:null,routeLyr:null,me:null,acc:null,watch:null,p:null,wake:null,first:true,
@@ -1051,15 +1068,13 @@ function trackPath(from,p){
 }
 function bboxOf(pts,pad){let minLa=Infinity,maxLa=-Infinity,minLo=Infinity,maxLo=-Infinity;pts.forEach(q=>{minLa=Math.min(minLa,q.lat);maxLa=Math.max(maxLa,q.lat);minLo=Math.min(minLo,q.lon);maxLo=Math.max(maxLo,q.lon);});return {minLa:minLa-pad,maxLa:maxLa+pad,minLo:minLo-pad,maxLo:maxLo+pad};}
 function tilesFor(b){const out=[];for(let la=Math.floor(b.minLa/TILE);la<=Math.floor(b.maxLa/TILE);la++)for(let lo=Math.floor(b.minLo/TILE);lo<=Math.floor(b.maxLo/TILE);lo++)out.push([la,lo]);return out;}
-async function fetchTile(la,lo){
+async function fetchTile(la,lo,onWait){
   const key="osmt@"+la+","+lo;let d=await idbGet(key);
   if(d&&(!d.ts||Date.now()-d.ts<14*86400000||!navigator.onLine))return d;
   if(!navigator.onLine)throw new Error("yol ağı için internet gerekli");
   const bb=[(la*TILE).toFixed(3),(lo*TILE).toFixed(3),((la+1)*TILE).toFixed(3),((lo+1)*TILE).toFixed(3)];
   const q=`[out:json][timeout:80];way(${bb.join(",")})["highway"~"^(track|path|unclassified|tertiary|secondary|primary|trunk|residential|service|living_street|motorway|primary_link|secondary_link|trunk_link|motorway_link)$"];out geom;`;
-  const r=await fetch("https://overpass-api.de/api/interpreter",{method:"POST",body:"data="+encodeURIComponent(q),headers:{"Content-Type":"application/x-www-form-urlencoded"},signal:AbortSignal.timeout(90000)});
-  if(!r.ok)throw new Error("yol ağı sunucusu "+r.status);
-  const raw=await r.json();
+  const raw=await overpassPost(q,90000,onWait);
   d={ts:Date.now(),elements:(raw.elements||[]).map(w=>({nodes:w.nodes,geometry:w.geometry,t:(w.tags||{}).highway}))};
   await idbPut(key,d);return d;
 }
@@ -1335,8 +1350,15 @@ $("offBtn").onclick=async()=>{
     const bb={minLa:minLa-0.01,maxLa:maxLa+0.01,minLo:minLo-0.01,maxLo:maxLo+0.01};
     // 2) yol agi
     const tl=tilesFor(bb);if(tl.length>42)throw new Error("ilçe alanı çok geniş ("+tl.length+" parça)");
-    for(let i=0;i<tl.length;i++){ilerle(0.3+0.45*i/tl.length,`${ad}: yol ağı indiriliyor (${i+1}/${tl.length})…`);
-      const d=await fetchTile(tl[i][0],tl[i][1]);bayt+=JSON.stringify(d).length;await sleep(300);}
+    let yolEksik=[];
+    for(let tekrar=0;tekrar<2;tekrar++){
+      const sira=tekrar===0?tl:yolEksik;yolEksik=[];
+      for(let i=0;i<sira.length;i++){const yazi=`${ad}: yol ağı indiriliyor (${i+1}/${sira.length})${tekrar?" — eksikler yeniden":""}…`;ilerle(0.3+0.45*i/sira.length,yazi);
+        try{const d=await fetchTile(sira[i][0],sira[i][1],t=>ilerle(0.3+0.45*i/sira.length,yazi+` sunucu yoğun, bekleniyor (${t}/3)`));bayt+=JSON.stringify(d).length;}
+        catch(err){if(!navigator.onLine)throw err;yolEksik.push(sira[i]);}
+        await sleep(400);}
+      if(!yolEksik.length)break;
+      ilerle(0.75,`${ad}: ${yolEksik.length} yol ağı parçası alınamadı, 20 sn sonra yeniden denenecek…`);await sleep(20000);}
     // 3) dusuk cozunurluklu uydu (EOX Sentinel-2, z10-14)
     let uyduOk=0,uyduHata=0,uyduAtla=false;
     try{const c=await caches.open("uydu-v1");
@@ -1348,8 +1370,8 @@ $("offBtn").onclick=async()=>{
         catch(err){uyduHata++;if(uyduHata>25&&uyduOk===0){uyduAtla=true;break;}}}}
     }catch(err){uyduAtla=true;}
     const m=(await idbGet("off-manifest"))||{};m[ad]={tarih:new Date().toLocaleDateString("tr-TR"),mb:+(bayt/1e6).toFixed(1),tiles:tl.map(t=>t.join(",")),uydu:uyduOk};await idbPut("off-manifest",m);
-    ilerle(1,`${ad} indirildi: ${cat.p.length} mahalle parseli, ${tl.length} yol ağı parçası, uydu altlığı ${uyduAtla?"alınamadı (internetli kullanımda normal uydu, çevrimdışında yol ağı görünümü)":uyduOk+" karo"}. Toplam ${(bayt/1e6).toFixed(1)} MB.`);
-    $("offMsg").className="msg ok";await offListe();
+    ilerle(1,`${ad} indirildi: ${cat.p.length} mahalle parseli, ${tl.length-yolEksik.length}/${tl.length} yol ağı parçası${yolEksik.length?" (eksik parçalar için daha sonra yeniden İlçeyi indir'e basın; inenler tekrar inmez)":""}, uydu altlığı ${uyduAtla?"alınamadı (internetli kullanımda normal uydu, çevrimdışında yol ağı görünümü)":uyduOk+" karo"}. Toplam ${(bayt/1e6).toFixed(1)} MB.`);
+    $("offMsg").className=yolEksik.length?"msg err":"msg ok";await offListe();
   }catch(err){show($("offMsg"),"İndirme yarım kaldı: "+err.message+". Tekrar deneyin; inen kısımlar saklanır.","err");}
   finally{offRunning=false;$("offBtn").disabled=false;}
 };

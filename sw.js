@@ -1,5 +1,5 @@
 /* Kayseri Parsel Rota - cevrimdisi calisma (service worker) */
-const SURUM = "r38";
+const SURUM = "r39";
 const KABUK = "kabuk-" + SURUM;
 const DINAMIK = "dinamik-v1";
 const UYDU = "uydu-v1";
@@ -35,7 +35,7 @@ self.addEventListener("fetch", e => {
   const req = e.request;
   if (req.method !== "GET") return;
   const u = new URL(req.url);
-  if (u.hostname.includes("overpass-api.de") || u.hostname.includes("project-osrm.org") || u.hostname.includes("docs.google.com")) return;
+  if (u.pathname.includes("/api/interpreter") || u.hostname.includes("project-osrm.org") || u.hostname.includes("docs.google.com")) return;
   if (u.origin === self.location.origin) {
     if (u.pathname.endsWith("/sw.js")) return;
     e.respondWith(agOnce(req, u.pathname.includes("/d/") ? DINAMIK : KABUK));
