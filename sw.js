@@ -1,5 +1,5 @@
 /* Kayseri Parsel Rota - cevrimdisi calisma (service worker) */
-const SURUM = "r39";
+const SURUM = "r40";
 const KABUK = "kabuk-" + SURUM;
 const DINAMIK = "dinamik-v1";
 const UYDU = "uydu-v1";
@@ -38,6 +38,7 @@ self.addEventListener("fetch", e => {
   if (u.pathname.includes("/api/interpreter") || u.hostname.includes("project-osrm.org") || u.hostname.includes("docs.google.com")) return;
   if (u.origin === self.location.origin) {
     if (u.pathname.endsWith("/sw.js")) return;
+    if (u.pathname.includes("/d/r/")) return; // yol agi karolari uygulama icinde (IndexedDB) saklanir
     e.respondWith(agOnce(req, u.pathname.includes("/d/") ? DINAMIK : KABUK));
     return;
   }

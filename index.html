@@ -284,6 +284,7 @@ summary{cursor:pointer;font-weight:700}
     <button type="button" id="liveFollow" class="grow">Takip: açık</button>
     <button type="button" id="liveVoice" class="grow">Ses: açık</button>
     <button type="button" id="liveDraw" class="grow">Yol çiz</button>
+    <button type="button" id="liveIz" class="grow gold" hidden>Geldiğim yolu kaydet</button>
     <button type="button" id="liveNext" class="grow gold" hidden>Gidildi, sıradaki durağa geç</button>
   </div>
   <div class="livebtns row" id="liveBtnsDraw" hidden>
@@ -300,7 +301,7 @@ summary{cursor:pointer;font-weight:700}
 "use strict";
 const ILCELER_STATIK=["Akkışla","Bünyan","Develi","Felahiye","Hacılar","İncesu","Kocasinan","Melikgazi","Özvatan","Pınarbaşı","Sarıoğlan","Sarız","Talas","Tomarza","Yahyalı","Yeşilhisar"];
 const MERKEZ={lat:38.7205,lon:35.4826};
-const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", SURUM="r38 · 29.10.2026 17:40";
+const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", SURUM="r40 · 29.10.2026 19:45";
 const $=id=>document.getElementById(id);
 
 /* ---------- Giris kaydi (Google Formu) ---------- */
@@ -612,7 +613,7 @@ function initMap(){
   map=L.map("map",{zoomControl:true,dragging:!COARSE}).setView([MERKEZ.lat,MERKEZ.lon],9);
   const osm=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"});
   const sat=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,attribution:"Esri World Imagery"});
-  sat.addTo(map);
+  sat.addTo(map);map.attributionControl.addAttribution(RN_ATIF);
   L.control.layers({"Uydu":sat,"Harita":osm},null,{position:"topright"}).addTo(map);
   const FS=L.Control.extend({onAdd:function(){const b=L.DomUtil.create("button","fs-btn");b.type="button";b.id="fsBtn";b.title="Tam ekran";b.setAttribute("aria-label","Tam ekran");b.textContent="⛶";L.DomEvent.disableClickPropagation(b);L.DomEvent.on(b,"click",toggleFS);return b;}});
   new FS({position:"topleft"}).addTo(map);
@@ -654,9 +655,12 @@ function drawMap(act,sp){
   const stops=stopsRaw.map(navPt);
   const rk=routeKey(stops);
   if(stops.length>1&&routeCache.key===rk&&routeCache.line){
-    L.polyline(routeCache.line,{color:"#FFFFFF",weight:6,opacity:.6}).addTo(routeLayer);
-    L.polyline(routeCache.line,{color:"#A23A2C",weight:3}).addTo(routeLayer);
-    if(!routeCache.osm)act.forEach(p=>{if(p.yol&&p.yol.m>30)L.polyline([[p.yol.lat,p.yol.lon],[p.lat,p.lon]],{color:"#FFFFFF",weight:2,dashArray:"4 6",opacity:.9}).addTo(routeLayer);});
+    if(routeCache.legs)routeCache.legs.forEach(ozetBacakCiz);
+    else{
+      L.polyline(routeCache.line,{color:"#FFFFFF",weight:6,opacity:.6}).addTo(routeLayer);
+      L.polyline(routeCache.line,{color:"#A23A2C",weight:3}).addTo(routeLayer);
+      if(!routeCache.osm)act.forEach(p=>{if(p.yol&&p.yol.m>30)L.polyline([[p.yol.lat,p.yol.lon],[p.lat,p.lon]],{color:"#FFFFFF",weight:2,dashArray:"4 6",opacity:.9}).addTo(routeLayer);});
+    }
   }else{
     const line=(sp?[[sp.lat,sp.lon]]:[]).concat(act.map(p=>[p.lat,p.lon]));
     if(line.length>1)L.polyline(line,{color:"#A23A2C",weight:2,dashArray:"4 8",opacity:.8}).addTo(routeLayer);
@@ -666,12 +670,291 @@ function drawMap(act,sp){
   if(needFit&&bounds.length){map.fitBounds(bounds,{padding:[24,24],maxZoom:16});needFit=false;}
 }
 
+/* ---------- Hazir yol agi: OSM + uydu tespiti tarla yollari (karolar telefonda saklanir, cevrimdisi calisir) ---------- */
+// Sinif: 0 ana yol, 1 koy yolu, 2 yerlesim/servis, 3 tarla yolu (OSM), 4 patika, 5 tarla yolu (uydu tespiti), 6 kisa baglanti, 7 ekip yolu, 9 otoyol
+const RN_W_UZAK={0:1.0,9:1.0,1:1.1,2:1.3,3:2.0,4:2.8,5:2.2,6:2.8,7:1.8};    // parselden uzakta: asfalt tercih edilir (sureye yakin)
+const RN_W_YAKIN={0:1.0,9:1.0,1:1.0,2:1.0,3:1.05,4:1.2,5:1.1,6:1.4,7:1.0}; // parsele RN_YAKIN_M kala: en kisa yol, tarla yollari serbest
+const RN_V={0:70,9:90,1:50,2:30,3:20,4:10,5:15,6:8,7:15};                    // tahmini hiz km/sa
+const RN_YAKIN_M=4000, RN_YURU=6, RN_YAKLAS=4, RN_HUCRE=400, RN_UZUN_KM=15, RN_GIRIS_KM=4;
+const RN_ATIF="Yol ağı © OpenStreetMap katkıcıları, Microsoft (ODbL)";
+const rn={ver:null,nesil:0,loaded:new Set(),bos:new Set(),major:false,nLa:[],nLo:[],nKey:new Map(),adj:[],E:[],grid:new Map(),ekey:new Set(),team:new Set(),karoE:new Map()};
+const rnBekleyen=new Map();
+let rnVerSorgu=null;
+function fnv(s){let h=0x811c9dc5;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,0x01000193)>>>0;}return h.toString(16).padStart(8,"0");}
+function rnReset(){Object.assign(rn,{nesil:rn.nesil+1,loaded:new Set(),bos:new Set(),major:false,nLa:[],nLo:[],nKey:new Map(),adj:[],E:[],grid:new Map(),ekey:new Set(),team:new Set(),karoE:new Map()});}
+async function rnSurumSor(){
+  try{const r=await fetch("d/r/i.json",{cache:"no-store",signal:AbortSignal.timeout(8000)});
+    if(r.ok){const v=(await r.json()).v;if(v){rn.ver=v;await idbPut("rn-ver",v);return v;}}}catch(e){}
+  return null;
+}
+async function rnHazir(){ // surum: telefondaki kayit hemen kullanilir, internet varsa arka planda yenilenir
+  if(rn.ver)return true;
+  const yerel=await idbGet("rn-ver");
+  if(rn.ver)return true;
+  if(yerel){rn.ver=yerel;if(navigator.onLine&&!rnVerSorgu)rnVerSorgu=rnSurumSor();return true;}
+  if(!navigator.onLine)return false;
+  if(!rnVerSorgu)rnVerSorgu=rnSurumSor();
+  const v=await rnVerSorgu;if(!v)rnVerSorgu=null;
+  return !!rn.ver;
+}
+function rnNode(la5,lo5){
+  const k=la5*1e7+lo5;let i=rn.nKey.get(k);
+  if(i===undefined){i=rn.nLa.length;rn.nKey.set(k,i);rn.nLa.push(la5/1e5);rn.nLo.push(lo5/1e5);rn.adj.push([]);}
+  return i;
+}
+function rnSegLen(la1,lo1,la2,lo2){const kx=111320*Math.cos(la1*Math.PI/180);const dx=(lo2-lo1)*kx,dy=(la2-la1)*110574;return Math.sqrt(dx*dx+dy*dy);}
+function rnAddEdge(c,la,lo){ // la/lo: Int32Array (1e-5 derece)
+  const n=la.length;if(n<2)return -1;
+  const u=rnNode(la[0],lo[0]),v=rnNode(la[n-1],lo[n-1]);
+  const cum=new Float32Array(n);let L=0;
+  for(let j=1;j<n;j++){L+=rnSegLen(la[j-1]/1e5,lo[j-1]/1e5,la[j]/1e5,lo[j]/1e5);cum[j]=L;}
+  const dk=(u<v?u+"-"+v:v+"-"+u)+"-"+Math.round(L)+"-"+c;
+  if(rn.ekey.has(dk))return -1;rn.ekey.add(dk);
+  const ei=rn.E.length;rn.E.push({u,v,c,la,lo,cum,len:L});
+  rn.adj[u].push(ei);if(v!==u)rn.adj[v].push(ei);
+  for(let j=1;j<n;j++){
+    const a0=Math.floor(Math.min(la[j-1],la[j])/RN_HUCRE),a1=Math.floor(Math.max(la[j-1],la[j])/RN_HUCRE);
+    const b0=Math.floor(Math.min(lo[j-1],lo[j])/RN_HUCRE),b1=Math.floor(Math.max(lo[j-1],lo[j])/RN_HUCRE);
+    for(let a=a0;a<=a1;a++)for(let b=b0;b<=b1;b++){const k=a*100000+b;let arr=rn.grid.get(k);if(!arr){arr=[];rn.grid.set(k,arr);}if(arr[arr.length-1]!==ei)arr.push(ei);}
+  }
+  return ei;
+}
+function rnDecode(d){
+  const out=[];
+  for(const rec of (d.e||[])){
+    const n=(rec.length-1)/2;if(n<2)continue;
+    const la=new Int32Array(n),lo=new Int32Array(n);la[0]=rec[1];lo[0]=rec[2];
+    for(let j=1;j<n;j++){la[j]=la[j-1]+rec[1+2*j];lo[j]=lo[j-1]+rec[2+2*j];}
+    out.push([rec[0],la,lo]);
+  }
+  return out;
+}
+async function rnHam(name,bekle){ // karo dosyasi: telefondaki kopya; surumu eskiyse yenisi indirilir (indirmede beklenir, navigasyonda arka planda)
+  const key="rn@"+name;
+  const k=await idbGet(key);
+  if(k&&k.v===rn.ver)return k.b;
+  const getir=async()=>{
+    const r=await fetch("d/r/"+name+".bin",{cache:"no-cache",signal:AbortSignal.timeout(30000)});
+    if(r.status===404){await idbPut(key,{v:rn.ver,b:0});return 0;}
+    if(!r.ok)throw new Error("yol ağı dosyası alınamadı ("+r.status+")");
+    const b=await r.arrayBuffer();await idbPut(key,{v:rn.ver,b});return b;};
+  if(k){
+    if(!navigator.onLine)return k.b;
+    if(bekle){try{return await getir();}catch(e){return k.b;}}
+    getir().catch(()=>{});return k.b;
+  }
+  if(!navigator.onLine)return null;
+  return await getir();
+}
+async function rnKaroYukle(key){
+  const buf=await rnHam(fnv("r"+key));
+  if(buf===null)return false;
+  if(rn.loaded.has(key)||rn.bos.has(key))return true;
+  if(!buf){rn.bos.add(key);return true;}
+  const d=JSON.parse(await gunzipText(new Uint8Array(buf)));
+  if(rn.loaded.has(key))return true;
+  const yeni=[];
+  for(const [c,la,lo] of rnDecode(d)){const ei=rnAddEdge(c,la,lo);if(ei>=0)yeni.push(ei);}
+  rn.loaded.add(key);rn.karoE.set(key,yeni);
+  return true;
+}
+function rnKaro(key){ // key "la:lo" (0,1 derecelik karo)
+  if(rn.loaded.has(key)||rn.bos.has(key))return Promise.resolve(true);
+  let p=rnBekleyen.get(key);
+  if(!p){p=rnKaroYukle(key).finally(()=>rnBekleyen.delete(key));rnBekleyen.set(key,p);}
+  return p;
+}
+async function rnAna(){ // il geneli ana yollar (uzun bacaklar icin)
+  if(rn.major)return true;
+  const buf=await rnHam(fnv("rm"));if(!buf)return false;
+  if(rn.major)return true;
+  const d=JSON.parse(await gunzipText(new Uint8Array(buf)));
+  if(rn.major)return true;
+  for(const [c,la,lo] of rnDecode(d))rnAddEdge(c,la,lo);
+  rn.major=true;return true;
+}
+function rnKarolar(pts,pad){const b=bboxOf(pts,pad);const out=[];for(let a=Math.floor(b.minLa*10);a<=Math.floor(b.maxLa*10);a++)for(let o=Math.floor(b.minLo*10);o<=Math.floor(b.maxLo*10);o++)out.push(a+":"+o);return out;}
+async function rnYukle(pts,pad,onProgress){
+  const hepsi=rnKarolar(pts,pad);
+  let tl=hepsi.filter(k=>!rn.loaded.has(k)&&!rn.bos.has(k));
+  if(rn.loaded.size+tl.length>90){rnReset();tl=hepsi;}
+  let eksik=0;
+  for(let i=0;i<tl.length;i++){if(onProgress)onProgress(i+1,tl.length);if(!(await rnKaro(tl[i])))eksik++;}
+  return eksik;
+}
+function rnYakin(pt,maxM,limit){ // pt'ye en yakin kenar noktalari (kenar basina bir tane)
+  const la5=pt.lat*1e5,lo5=pt.lon*1e5;
+  const kx=111320*Math.cos(pt.lat*Math.PI/180),ky=110574;
+  const dla=maxM/ky*1e5,dlo=maxM/kx*1e5;
+  const a0=Math.floor((la5-dla)/RN_HUCRE),a1=Math.floor((la5+dla)/RN_HUCRE),b0=Math.floor((lo5-dlo)/RN_HUCRE),b1=Math.floor((lo5+dlo)/RN_HUCRE);
+  const seen=new Set(),out=[];
+  for(let a=a0;a<=a1;a++)for(let b=b0;b<=b1;b++){const arr=rn.grid.get(a*100000+b);if(!arr)continue;
+    for(const ei of arr){if(seen.has(ei))continue;seen.add(ei);
+      const E=rn.E[ei];let best=Infinity,bs=0,bt=0;
+      for(let j=1;j<E.la.length;j++){
+        const ax=(E.lo[j-1]/1e5-pt.lon)*kx,ay=(E.la[j-1]/1e5-pt.lat)*ky,bx=(E.lo[j]/1e5-pt.lon)*kx,by=(E.la[j]/1e5-pt.lat)*ky;
+        const dx=bx-ax,dy=by-ay,L2=dx*dx+dy*dy;let t=L2?-(ax*dx+ay*dy)/L2:0;t=t<0?0:(t>1?1:t);
+        const px=ax+t*dx,py=ay+t*dy,d=Math.sqrt(px*px+py*py);
+        if(d<best){best=d;bs=j;bt=t;}
+      }
+      if(best<=maxM){
+        const along=E.cum[bs-1]+bt*(E.cum[bs]-E.cum[bs-1]);
+        const la=(E.la[bs-1]+bt*(E.la[bs]-E.la[bs-1]))/1e5,lo=(E.lo[bs-1]+bt*(E.lo[bs]-E.lo[bs-1]))/1e5;
+        out.push({e:ei,d:best,along,lat:la,lon:lo});
+      }
+    }}
+  out.sort((x,y)=>x.d-y.d);
+  return limit?out.slice(0,limit):out;
+}
+function rnParca(E,a0,a1){ // kenar uzerinde a0'dan a1'e (metre) noktalar
+  const out=[];const n=E.la.length,c=E.cum;
+  const nokta=a=>{let j=1;while(j<n-1&&c[j]<a)j++;const s=c[j]-c[j-1],t=s>0?(a-c[j-1])/s:0;return [(E.la[j-1]+t*(E.la[j]-E.la[j-1]))/1e5,(E.lo[j-1]+t*(E.lo[j]-E.lo[j-1]))/1e5];};
+  out.push(nokta(a0));
+  if(a1>=a0){for(let j=0;j<n;j++)if(c[j]>a0&&c[j]<a1)out.push([E.la[j]/1e5,E.lo[j]/1e5]);}
+  else{for(let j=n-1;j>=0;j--)if(c[j]<a0&&c[j]>a1)out.push([E.la[j]/1e5,E.lo[j]/1e5]);}
+  out.push(nokta(a1));
+  return out;
+}
+function rnNoktalar(E){const p=new Array(E.la.length);for(let j=0;j<E.la.length;j++)p[j]=[E.la[j]/1e5,E.lo[j]/1e5];return p;}
+function rnKenarYon(E,from){const p=rnNoktalar(E);return E.u===from?p:p.reverse();}
+function rnKavsak(n){const s=new Set();for(const ei of rn.adj[n]){const E=rn.E[ei];s.add(E.u===n?E.v:E.u);if(s.size>=3)return true;}return false;}
+function rnRota(from,to){ // from -> to: {pts,dk,head,tail,kav} ya da null
+  const N=rn.nLa.length;if(!N)return null;
+  let tc=rnYakin(to,1500,80);if(!tc.length)tc=rnYakin(to,5000,40);if(!tc.length)return null;
+  let sc=rnYakin(from,300,6);if(!sc.length)sc=rnYakin(from,3000,10);if(!sc.length)return null;
+  const dist=new Float64Array(N).fill(Infinity),prevE=new Int32Array(N).fill(-1),prevN=new Int32Array(N).fill(-1),srcK=new Int16Array(N).fill(-1);
+  const hF=[],hN=[];
+  const push=(f,n)=>{hF.push(f);hN.push(n);let i=hF.length-1;while(i>0){const p=(i-1)>>1;if(hF[p]<=hF[i])break;[hF[p],hF[i]]=[hF[i],hF[p]];[hN[p],hN[i]]=[hN[i],hN[p]];i=p;}};
+  const pop=()=>{const f=hF[0],n=hN[0];const lf=hF.pop(),ln=hN.pop();if(hF.length){hF[0]=lf;hN[0]=ln;let i=0;for(;;){const l=2*i+1,r=l+1;let m=i;if(l<hF.length&&hF[l]<hF[m])m=l;if(r<hF.length&&hF[r]<hF[m])m=r;if(m===i)break;[hF[m],hF[i]]=[hF[i],hF[m]];[hN[m],hN[i]]=[hN[i],hN[m]];i=m;}}return [f,n];};
+  const kx=111320*Math.cos(to.lat*Math.PI/180),ky=110574;
+  const h=i=>{const dx=(rn.nLo[i]-to.lon)*kx,dy=(rn.nLa[i]-to.lat)*ky;return Math.sqrt(dx*dx+dy*dy);};
+  const w=(c,d)=>(d<RN_YAKIN_M?RN_W_YAKIN:RN_W_UZAK)[c]||1.5;
+  const tBy=new Map();
+  for(const t of tc){const E=rn.E[t.e];const ek=(n,part)=>{let a=tBy.get(n);if(!a){a=[];tBy.set(n,a);}a.push({t,part});};ek(E.u,t.along);ek(E.v,E.len-t.along);}
+  let best=Infinity,bi=null;
+  const hs=hav(from,to)*1000;
+  sc.forEach((s,k)=>{const E=rn.E[s.e],ws=w(E.c,hs),app=s.d*RN_YAKLAS;
+    const rlx=(n,g)=>{if(g<dist[n]){dist[n]=g;srcK[n]=k;prevE[n]=-1;prevN[n]=-1;push(g+h(n),n);}};
+    rlx(E.u,app+s.along*ws);rlx(E.v,app+(E.len-s.along)*ws);
+    for(const t of tc)if(t.e===s.e){const c=app+Math.abs(t.along-s.along)*w(E.c,0)+t.d*RN_YURU;if(c<best){best=c;bi={direct:true,s,t};}}});
+  let say=0;
+  while(hF.length){
+    const [f,u]=pop();if(f>=best)break;const g=dist[u],hu=h(u);if(f-hu>g+1e-6)continue;
+    if(++say>400000)break;
+    const tl=tBy.get(u);
+    if(tl)for(const x of tl){const E=rn.E[x.t.e];const c=g+x.part*w(E.c,0)+x.t.d*RN_YURU;if(c<best){best=c;bi={node:u,t:x.t};}}
+    for(const ei of rn.adj[u]){const E=rn.E[ei];const v=E.u===u?E.v:E.u;const nd=g+E.len*w(E.c,hu);
+      if(nd<dist[v]){dist[v]=nd;prevE[v]=ei;prevN[v]=u;srcK[v]=srcK[u];push(nd+h(v),v);}}
+  }
+  if(!bi)return null;
+  // geometri
+  const pts=[],kav=[];let dk=0;const ekle=arr=>{for(const p of arr){const q=pts[pts.length-1];if(!q||Math.abs(q[0]-p[0])>1e-7||Math.abs(q[1]-p[1])>1e-7)pts.push(p);}};
+  const sure=(m,c)=>m/1000/(RN_V[c]||15)*60;
+  let s,t;
+  if(bi.direct){s=bi.s;t=bi.t;const E=rn.E[s.e];ekle([[from.lat,from.lon]]);ekle(rnParca(E,s.along,t.along));dk+=sure(Math.abs(t.along-s.along),E.c);}
+  else{
+    t=bi.t;const yol=[];let n=bi.node;while(prevN[n]>=0){yol.push(prevE[n]);n=prevN[n];}yol.reverse();
+    s=sc[srcK[n]];const SE=rn.E[s.e];
+    ekle([[from.lat,from.lon]]);
+    if(n===SE.u){ekle(rnParca(SE,s.along,0));dk+=sure(s.along,SE.c);}else{ekle(rnParca(SE,s.along,SE.len));dk+=sure(SE.len-s.along,SE.c);}
+    let cur=n;
+    for(const ei of yol){const E=rn.E[ei];if(rnKavsak(cur))kav.push(pts.length-1);ekle(rnKenarYon(E,cur));dk+=sure(E.len,E.c);cur=E.u===cur?E.v:E.u;}
+    const TE=rn.E[t.e];if(rnKavsak(cur))kav.push(pts.length-1);
+    if(cur===TE.u){ekle(rnParca(TE,0,t.along));dk+=sure(t.along,TE.c);}else{ekle(rnParca(TE,TE.len,t.along));dk+=sure(TE.len-t.along,TE.c);}
+  }
+  ekle([[to.lat,to.lon]]);
+  dk+=(s.d+t.d)/1000/4*60;
+  return {pts,dk,head:s.d,tail:t.d,kav};
+}
+function rnBagla(pt){ // noktayi 30 m icindeki en yakin kenara sanal dugumle baglar
+  const a=rnNode(Math.round(pt[0]*1e5),Math.round(pt[1]*1e5));
+  const y=rnYakin({lat:pt[0],lon:pt[1]},30,1)[0];
+  if(!y)return a;
+  const E=rn.E[y.e];
+  const q=rnNode(Math.round(y.lat*1e5),Math.round(y.lon*1e5));
+  if(q!==E.u&&q!==E.v){
+    const p1=rnParca(E,y.along,0),p2=rnParca(E,y.along,E.len);
+    const to5=arr=>[Int32Array.from(arr.map(p=>Math.round(p[0]*1e5))),Int32Array.from(arr.map(p=>Math.round(p[1]*1e5)))];
+    const [la1,lo1]=to5(p1),[la2,lo2]=to5(p2);rnAddEdge(E.c,la1,lo1);rnAddEdge(E.c,la2,lo2);
+  }
+  if(q!==a&&y.d>=1)rnAddEdge(6,Int32Array.from([Math.round(pt[0]*1e5),Math.round(y.lat*1e5)]),Int32Array.from([Math.round(pt[1]*1e5),Math.round(y.lon*1e5)]));
+  return a;
+}
+function rnEkipYollari(){ // ekip yollari (cizilen tarla yollari): uclari ve yola degen noktalari aga baglanir
+  if(typeof team==="undefined"||!team.roads)return;
+  const yuklu=a=>{const k=Math.floor(a[0]*10)+":"+Math.floor(a[1]*10);return rn.loaded.has(k)||rn.bos.has(k);};
+  team.roads.forEach(r=>{const P=r.pts;if(!P||P.length<2)return;const key=roadText(P);if(rn.team.has(key))return;
+    if(!yuklu(P[0])||!yuklu(P[P.length-1]))return;
+    rn.team.add(key);
+    const kes=[0];for(let i=1;i<P.length-1;i++)if(rnYakin({lat:P[i][0],lon:P[i][1]},20,1).length)kes.push(i);kes.push(P.length-1);
+    kes.forEach(i=>rnBagla(P[i]));
+    for(let j=1;j<kes.length;j++){const seg=P.slice(kes[j-1],kes[j]+1);
+      rnAddEdge(7,Int32Array.from(seg.map(p=>Math.round(p[0]*1e5))),Int32Array.from(seg.map(p=>Math.round(p[1]*1e5))));}});
+}
+function yolUz(pts){let m=0;for(let i=1;i<pts.length;i++)m+=hav({lat:pts[i-1][0],lon:pts[i-1][1]},{lat:pts[i][0],lon:pts[i][1]})*1000;return m;}
+async function rnAgYukle(a,b,onProgress){ // iki nokta arasi karolar; alan genisse ya da karo eksikse iki uc + il geneli ana yollar
+  if(rnKarolar([a,b],0.02).length<=20){if(!(await rnYukle([a,b],0.02,onProgress)))return 0;}
+  else{await rnYukle([b],0.03,onProgress);await rnYukle([a],0.02,onProgress);}
+  return (await rnAna())?0:1;
+}
+async function rnLeg(from,to,onProgress){ // tek bacak: uzun yolda internet varsa ilk kisim OSRM, parsele RN_GIRIS_KM kala hazir yol agi
+  if(!(await rnHazir()))return null;
+  let bas=from,on=null;
+  if(hav(from,to)>RN_UZUN_KM&&navigator.onLine){
+    try{const r=await osrmRoute([from,to]);
+      let k=-1;for(let i=0;i<r.line.length;i++){if(hav({lat:r.line[i][0],lon:r.line[i][1]},to)<=RN_GIRIS_KM){k=i;break;}}
+      if(k>0){const parca=r.line.slice(0,k+1);on={pts:parca,dk:r.dk*yolUz(parca)/(yolUz(r.line)||1),head:hav(from,{lat:parca[0][0],lon:parca[0][1]})*1000};bas={lat:parca[k][0],lon:parca[k][1]};}
+    }catch(e){on=null;}
+  }
+  await rnAgYukle(bas,to,onProgress);
+  try{await teamLoad();rnEkipYollari();}catch(e){}
+  const r=rnRota(bas,to);
+  if(!r)return null;
+  if(!on)return r;
+  const n0=on.pts.length;
+  const kav=[];for(let i=1;i<n0;i++)kav.push(i);r.kav.forEach(i=>kav.push(n0+i));
+  return {pts:[[from.lat,from.lon]].concat(on.pts,r.pts.slice(1)),dk:on.dk+r.dk,head:on.head,tail:r.tail,kav};
+}
+function yolSonu(leg,p){ // bacagin arac yolundaki son noktasi (parsele yurume baslamadan once)
+  if(leg&&leg.tail>8&&leg.pts&&leg.pts.length>1){const q=leg.pts[leg.pts.length-2];return {lat:q[0],lon:q[1]};}
+  return p;
+}
+async function rnCokDurak(stops){ // ozet harita: tum duraklar, bacak bacak
+  if(stops.length<2||!(await rnHazir()))return null;
+  const legs=[];let line=[],m=0,dk=0,from=stops[0];
+  for(let i=1;i<stops.length;i++){
+    const r=await rnLeg(from,stops[i]);
+    if(!r)return null;
+    legs.push(r);line=line.concat(r.pts);
+    m+=Math.max(0,yolUz(r.pts)-r.head-r.tail);dk+=r.dk;
+    from=yolSonu(r,stops[i]);
+  }
+  return {line,km:m/1000,dk,legs,rn:true};
+}
+async function yolNoktasiRn(p){ // parsele en yakin yol noktasi (tarla yollari dahil)
+  if(!(await rnHazir()))return null;
+  const e1=await rnYukle([p],0.012);
+  let y=rnYakin(p,1500,1)[0];
+  if(!y){const e2=await rnYukle([p],0.04);y=rnYakin(p,4000,1)[0];if(!y)return (e1||e2)?null:{lat:p.lat,lon:p.lon,m:99999,k:"rn"};}
+  return {lat:+y.lat.toFixed(6),lon:+y.lon.toFixed(6),m:Math.round(y.d),k:"rn"};
+}
+
+function ozetBacakCiz(leg){ // arac kismi kirmizi, yolsuz kisimlar (yurume) kesikli
+  const n=leg.pts.length,hasHead=leg.head>30&&n>2,hasTail=leg.tail>8&&n>=2;
+  const mid=leg.pts.slice(hasHead?1:0,hasTail?n-1:n);
+  if(mid.length>1){L.polyline(mid,{color:"#FFFFFF",weight:6,opacity:.6}).addTo(routeLayer);L.polyline(mid,{color:"#A23A2C",weight:3}).addTo(routeLayer);}
+  const dash=pts=>L.polyline(pts,{color:"#FFFFFF",weight:2,dashArray:"4 6",opacity:.9}).addTo(routeLayer);
+  if(hasHead)dash(leg.pts.slice(0,2));if(hasTail)dash(leg.pts.slice(n-2));
+}
+
 /* ---------- Gercek yol rotasi (OpenStreetMap / OSRM) ---------- */
 const routeCache={key:null,line:null,km:null,dk:null,busy:null,fail:{},err:""};
 let routeTimer=null;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function routeKey(stops){return stops.map(q=>q.lat.toFixed(5)+","+q.lon.toFixed(5)).join(";");}
-async function osrmRoute(stops){
+let osrmSon=0;
+async function osrmRoute(stops){ // genel OSRM sunucusu: istekler arasi en az 1,1 sn
+  const bekle=osrmSon+1100-Date.now();if(bekle>0)await sleep(bekle);osrmSon=Date.now();
   const coords=stops.map(q=>q.lon.toFixed(6)+","+q.lat.toFixed(6)).join(";");
   const r=await fetch(`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson&steps=false`,{signal:AbortSignal.timeout(20000)});
   let d=null;try{d=await r.json();}catch(e){}
@@ -691,32 +974,6 @@ async function routeLegs(stops){ // bazi duraklar yol agina baglanamiyorsa bacak
   if(!ok)throw new Error("hiçbir bacak için rota yok");
   return {line,km,dk};
 }
-async function osmTrackRoute(stops){
-  if(stops.length<2||stops.length>40)return null;
-  let minLa=Infinity,maxLa=-Infinity,minLo=Infinity,maxLo=-Infinity;
-  stops.forEach(q=>{minLa=Math.min(minLa,q.lat);maxLa=Math.max(maxLa,q.lat);minLo=Math.min(minLo,q.lon);maxLo=Math.max(maxLo,q.lon);});
-  const kmY=(maxLa-minLa)*111,kmX=(maxLo-minLo)*111*Math.cos((minLa+maxLa)/2*Math.PI/180);
-  if(kmX>14||kmY>14)return null; // genis alan: OSRM
-  const pad=0.02;const bb=[(minLa-pad).toFixed(3),(minLo-pad).toFixed(3),(maxLa+pad).toFixed(3),(maxLo+pad).toFixed(3)];
-  const key="osmbb@"+bb.join(",");
-  let data=await idbGet(key);
-  if(!data){
-    const q=`[out:json][timeout:40];way(${bb.join(",")})["highway"~"^(track|path|unclassified|tertiary|secondary|primary|trunk|residential|service|living_street)$"];out geom;`;
-    data=await overpassPost(q,45000);if(!data.elements||!data.elements.length)return null;
-    await idbPut(key,data);
-  }
-  const g=buildGraph(data);if(g.nodes.size<2)return null;
-  let line=[],m=0;
-  for(let i=0;i<stops.length-1;i++){
-    const a=stops[i],b=stops[i+1];
-    const na=nearestNode(g,a),nb=nearestNode(g,b);
-    const r=(na&&nb)?dijkstra(g,na.id,nb.id):null;
-    if(!r||na.m>1500||nb.m>1500){line.push([a.lat,a.lon],[b.lat,b.lon]);m+=hav(a,b)*1000*1.35;continue;}
-    const pts=[[a.lat,a.lon]].concat(r.ids.map(id=>{const q=g.nodes.get(id);return [q.lat,q.lon];}),[[b.lat,b.lon]]);
-    line=line.concat(pts);m+=na.m+r.m+nb.m;
-  }
-  return {line,km:m/1000,dk:m/1000/30*60,osm:true};
-}
 function snapBekliyor(){return snapRunning||state.items.some(p=>hasPos(p)&&!p.done&&!p.ornek&&!p.yol&&!p.yolHata);}
 function routeFetch(stopsRaw,key){
   const stops=stopsRaw.map(navPt);
@@ -728,12 +985,12 @@ function routeFetch(stopsRaw,key){
     if(routeCache.busy)return;routeCache.busy=key;routeCache.err="";
     try{
       let res=null;
-      try{res=await osmTrackRoute(stopsRaw.map(q=>({lat:q.lat,lon:q.lon})));}catch(e){res=null;}
+      try{res=await rnCokDurak(stopsRaw.map(q=>({lat:q.lat,lon:q.lon})));}catch(e){console.warn("yol ağı",e);res=null;}
       if(!res){
         try{res=await osrmRoute(stops);}
         catch(e){if(e.code==="NoRoute"||e.code==="NoSegment"){res=await routeLegs(stops);}else throw e;}
       }
-      Object.assign(routeCache,{key,line:res.line,km:res.km,dk:res.dk,osm:!!res.osm});
+      Object.assign(routeCache,{key,line:res.line,km:res.km,dk:res.dk,osm:!!res.osm,legs:res.legs||null});
     }catch(e){routeCache.fail[key]=Date.now();routeCache.err=e.message;}
     finally{routeCache.busy=null;render();}
   },900);
@@ -1004,7 +1261,10 @@ async function snapAll(){
   if(snapRunning)return;snapRunning=true;
   try{
     for(const p of state.items){
-      if(!hasPos(p)||p.yol||p.yolHata||p.ornek)continue;
+      if(!hasPos(p)||p.ornek||(p.yol&&p.yol.k==="rn"))continue;
+      let y=null;try{y=await yolNoktasiRn(p);}catch(e){y=null;}
+      if(y){p.yol=y;delete p.yolHata;save();render();continue;}
+      if(p.yol||p.yolHata)continue;
       try{p.yol=await yolNoktasi(p);}catch(e){p.yolHata=1;}
       save();render();
       await sleep(400);
@@ -1093,6 +1353,7 @@ async function ensureGraph(b,onProgress){
   await teamLoad();team.roads.forEach(r=>{r.inGraph=false;});teamToGraph(live.graph);teamDraw();
 }
 async function computeLeg(from,p,onProgress){ // from -> p (tek bacak)
+  try{const r=await rnLeg(from,p,onProgress);if(r)return finishLeg(r.pts,r.dk,r.head,r.tail,r.kav);}catch(e){console.warn("yol ağı",e);}
   const far=hav(from,p);
   if(far>15){
     const r=await osrmRoute([from,p.yol||p]);
@@ -1106,20 +1367,28 @@ async function computeLeg(from,p,onProgress){ // from -> p (tek bacak)
   if(!t){const r=await osrmRoute([from,p.yol||p]);const son=hav({lat:r.line[r.line.length-1][0],lon:r.line[r.line.length-1][1]},p)*1000;return finishLeg(r.line.concat([[p.lat,p.lon]]),r.dk+son/1000/4*60,0,son);}
   return finishLeg(t.pts,t.m/1000/25*60,t.head,t.tail);
 }
-function finishLeg(pts,dk,head,tail){
+function finishLeg(pts,dk,head,tail,kav){ // kav: donus aranacak nokta sirasi (kavsaklar); yoksa tum ara noktalar
   const cums=[0];let cum=0;
   for(let i=1;i<pts.length;i++){cum+=hav({lat:pts[i-1][0],lon:pts[i-1][1]},{lat:pts[i][0],lon:pts[i][1]})*1000;cums.push(cum);}
-  const offStart=tail>8?cum-tail:cum;
+  const n=pts.length,tailM=(tail>8&&n>=2)?cum-cums[n-2]:0; // son parca: yoldan parsele yurume (ayni olcuyle)
+  const offStart=tailM>0?cums[n-2]:cum;
   const man=[];
-  for(let i=1;i<pts.length-1;i++){const d1=cums[i]-cums[i-1],d2=cums[i+1]-cums[i];if(d1<12||d2<12)continue;
+  const geri=(i,m)=>{let j=i;while(j>0&&cums[i]-cums[j]<m)j--;return j;};
+  const ileri=(i,m)=>{let j=i;while(j<pts.length-1&&cums[j]-cums[i]<m)j++;return j;};
+  const sira=kav||pts.map((_,i)=>i).slice(1,-1);
+  for(const i of sira){
+    if(i<=0||i>=pts.length-1)continue;
     if(cums[i]>=offStart-1)break;
-    const A={lat:pts[i-1][0],lon:pts[i-1][1]},B={lat:pts[i][0],lon:pts[i][1]},C={lat:pts[i+1][0],lon:pts[i+1][1]};
+    let a,c;
+    if(kav){a=geri(i,20);c=ileri(i,20);if(a===i||c===i)continue;}
+    else{const d1=cums[i]-cums[i-1],d2=cums[i+1]-cums[i];if(d1<12||d2<12)continue;a=i-1;c=i+1;}
+    const A={lat:pts[a][0],lon:pts[a][1]},B={lat:pts[i][0],lon:pts[i][1]},C={lat:pts[c][0],lon:pts[c][1]};
     const dlt=((bearing(B,C)-bearing(A,B)+540)%360)-180;if(Math.abs(dlt)<35)continue;
     const txt=Math.abs(dlt)>135?(dlt>0?"keskin sağa dönün":"keskin sola dönün"):(Math.abs(dlt)>70?(dlt>0?"sağa dönün":"sola dönün"):(dlt>0?"hafif sağa":"hafif sola"));
     if(man.length&&cums[i]-man[man.length-1].at<25)continue;
     man.push({at:cums[i],txt});}
-  if(tail>30)man.push({at:offStart,txt:`araç yolu bitiyor, parsele ${fmtInt(tail)} m yürüyün`,off:true});
-  else if(tail>8)man.push({at:offStart,txt:`parsel ${fmtInt(tail)} m içeride`,off:true});
+  if(tailM>30)man.push({at:offStart,txt:`araç yolu bitiyor, parsele ${fmtInt(tailM)} m yürüyün`,off:true});
+  else if(tailM>8)man.push({at:offStart,txt:`parsel ${fmtInt(tailM)} m içeride`,off:true});
   return {pts,cums,total:cum,dk,man,head:head||0,tail:tail||0,offStart};
 }
 function projectOnRoute(m,route){
@@ -1179,13 +1448,8 @@ function drawStart(){draw.on=true;draw.pts=[];live.follow=false;followUI();drawU
 function drawStop(){draw.on=false;draw.pts=[];draw.lyr.clearLayers();drawUI();liveTick();}
 async function drawSave(){
   if(draw.pts.length<2){$("liveSub").textContent="En az iki nokta işaretleyin.";return;}
-  const ad=(window.prompt("Yolun adı (isteğe bağlı):","Tarla yolu")||"Tarla yolu").trim().slice(0,40);
-  const r={ad,ilce:live.p?(live.p.ilce||""):"",pts:draw.pts.map(a=>[+a[0].toFixed(5),+a[1].toFixed(5)]),cihaz:cihazId(),yerel:true};
-  const yerel=(await idbGet("ekipyol-local"))||[];yerel.push({ad:r.ad,ilce:r.ilce,pts:r.pts});await idbPut("ekipyol-local",yerel);
-  team.roads.push(r);
-  try{const b=new URLSearchParams();b.append(FORM_F.cihaz,cihazId());b.append(FORM_F.olay,"yol");b.append(FORM_F.surum,`${r.ilce}|${r.ad}|${roadText(r.pts)}`);
-    fetch(FORM_URL,{method:"POST",mode:"no-cors",body:b,keepalive:true}).catch(()=>{});}catch(e){}
-  teamToGraph(live.graph);teamDraw();drawStop();
+  const r=await ekipYoluKaydet(draw.pts,"Tarla yolu");if(!r)return;
+  drawStop();
   $("liveSub").textContent="Yol kaydedildi; rota yeniden hesaplanıyor…";
   live.legs[live.cur]=null;liveRecalc(true);
 }
@@ -1195,19 +1459,87 @@ function liveInit(){
   const sat=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,attribution:"Esri World Imagery"});
   const osm=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"});
   const eox=L.tileLayer(EOX_URL,{maxZoom:19,maxNativeZoom:EOX_ZMAX,attribution:"Sentinel-2 cloudless · EOX (CC BY-NC-SA)"});
-  const bos=L.tileLayer("",{attribution:"Yol ağı: © OpenStreetMap"});
+  const bos=L.tileLayer("",{attribution:""});
   live.base={sat,osm,eox,bos};
   (navigator.onLine?sat:eox).addTo(live.map);
   L.control.layers({"Uydu":sat,"Uydu (çevrimdışı, düşük çözünürlük)":eox,"Harita":osm,"Yalnız yol ağı":bos},null,{position:"topright"}).addTo(live.map);L.control.zoom({position:"bottomright"}).addTo(live.map);
   window.addEventListener("offline",()=>{if(live.map&&live.map.hasLayer(sat)){live.map.removeLayer(sat);eox.addTo(live.map);}});
+  live.map.attributionControl.addAttribution(RN_ATIF);
   live.tracks=L.layerGroup().addTo(live.map);team.lyr=L.layerGroup().addTo(live.map);live.routeLyr=L.layerGroup().addTo(live.map);live.lyr=L.layerGroup().addTo(live.map);draw.lyr=L.layerGroup().addTo(live.map);
   live.map.on("dragstart",()=>{if(live.follow){live.follow=false;followUI();}});
   live.map.on("click",e=>{if(!draw.on)return;draw.pts.push([e.latlng.lat,e.latlng.lng]);drawRender();$("liveSub").textContent=`${draw.pts.length} nokta işaretlendi. Devam edin ya da Yolu kaydet deyin.`;});
 }
+/* ---------- Canli haritada hazir yol agi cizimi ---------- */
+const RN_STIL={yer:{color:"#FFFFFF",weight:1.5,opacity:.5},koy:{color:"#FFFFFF",weight:2,opacity:.7},ana:{color:"#FFFFFF",weight:3,opacity:.85},bag:{color:"#FFD54F",weight:1.5,dashArray:"2 5",opacity:.7},tarla:{color:"#FFD54F",weight:2,dashArray:"6 5",opacity:.85}};
+function rnGrup(c){return (c===0||c===9)?"ana":c===1?"koy":c===2?"yer":c===6?"bag":c===7?null:"tarla";}
+function liveAgCiz(){
+  if(!live.tracks)return;
+  if(live.rnNesil!==rn.nesil||!live.rnCiz){live.tracks.clearLayers();live.rnCiz=new Set();live.rnNesil=rn.nesil;}
+  for(const [key,eis] of rn.karoE){if(live.rnCiz.has(key))continue;live.rnCiz.add(key);
+    const g={};for(const ei of eis){const s=rnGrup(rn.E[ei].c);if(s)(g[s]=g[s]||[]).push(rnNoktalar(rn.E[ei]));}
+    ["yer","koy","ana","bag","tarla"].forEach(s=>{if(g[s])L.polyline(g[s],Object.assign({interactive:false},RN_STIL[s])).addTo(live.tracks);});}
+}
+/* ---------- Iz: haritada olmayan yoldan aracla gelinen kisim tek dokunusla ekip yoluna eklenir ---------- */
+const iz={pts:[],aday:null};
+function izSifirla(){iz.pts=[];iz.aday=null;$("liveIz").hidden=true;}
+function izEkle(pos){
+  const c=pos.coords;if(!c||!(c.accuracy<=25))return;
+  const m={lat:c.latitude,lon:c.longitude,t:pos.timestamp||Date.now()};
+  const son=iz.pts[iz.pts.length-1];const d=son?hav(son,m)*1000:Infinity;
+  if(son&&d<10)return;
+  m.v=(c.speed!=null&&!isNaN(c.speed))?c.speed:((son&&m.t>son.t)?d/((m.t-son.t)/1000):0);
+  const key=Math.floor(m.lat*10)+":"+Math.floor(m.lon*10);
+  m.disi=(rn.loaded.has(key)||rn.bos.has(key))&&!rnYakin(m,25,1).length; // yol agi yukluyse ve 25 m icinde yol yoksa
+  iz.pts.push(m);if(iz.pts.length>4000)iz.pts.splice(0,2000);
+  izDegerlendir();
+}
+function izDegerlendir(){
+  const P=iz.pts,arac=p=>p.disi&&p.v>=2;
+  let son=-1;for(let k=P.length-1;k>=0;k--)if(arac(P[k])){son=k;break;}
+  let L=0,parca=null;
+  if(son>=0){
+    let bas=son,bosluk=0;
+    for(let k=son-1;k>=0;k--){if(arac(P[k])){bas=k;bosluk=0;}else if(++bosluk>3)break;}
+    const s0=(bas>0&&!P[bas-1].disi)?bas-1:bas,s1=(son<P.length-1&&!P[son+1].disi)?son+1:son;
+    parca=P.slice(s0,s1+1);for(let k=1;k<parca.length;k++)L+=hav(parca[k-1],parca[k])*1000;
+  }
+  if(L<100){iz.aday=null;$("liveIz").hidden=true;return;}
+  iz.aday={pts:parca.map(p=>[p.lat,p.lon]),m:L};
+  $("liveIz").hidden=false;$("liveIz").textContent=`Geldiğim yolu kaydet (${fmtInt(L)} m)`;
+}
+function sadelestir(pts,tol){ // Douglas-Peucker (metre)
+  if(pts.length<3)return pts.slice();
+  const kx=111320*Math.cos(pts[0][0]*Math.PI/180),ky=110574;
+  const keep=new Uint8Array(pts.length);keep[0]=keep[pts.length-1]=1;
+  const st=[[0,pts.length-1]];
+  while(st.length){const [a,b]=st.pop();let md=0,mi=-1;
+    const ax=pts[a][1]*kx,ay=pts[a][0]*ky,dx=pts[b][1]*kx-ax,dy=pts[b][0]*ky-ay,L2=dx*dx+dy*dy;
+    for(let i=a+1;i<b;i++){const px=pts[i][1]*kx-ax,py=pts[i][0]*ky-ay;let t=L2?(px*dx+py*dy)/L2:0;t=t<0?0:(t>1?1:t);const d=Math.hypot(px-t*dx,py-t*dy);if(d>md){md=d;mi=i;}}
+    if(md>tol){keep[mi]=1;st.push([a,mi],[mi,b]);}}
+  return pts.filter((_,i)=>keep[i]);
+}
+async function ekipYoluKaydet(pts,adVars){ // yerel kayit + form (ekip tablosu) + yol agina ekleme
+  const g=window.prompt("Yolun adı (isteğe bağlı):",adVars);if(g===null)return null;
+  const ad=(g.trim()||adVars).slice(0,40);
+  const r={ad,ilce:live.p?(live.p.ilce||""):"",pts:pts.map(a=>[+a[0].toFixed(5),+a[1].toFixed(5)]),cihaz:cihazId(),yerel:true};
+  const yerel=(await idbGet("ekipyol-local"))||[];yerel.push({ad:r.ad,ilce:r.ilce,pts:r.pts});await idbPut("ekipyol-local",yerel);
+  team.roads.push(r);
+  try{const b=new URLSearchParams();b.append(FORM_F.cihaz,cihazId());b.append(FORM_F.olay,"yol");b.append(FORM_F.surum,`${r.ilce}|${r.ad}|${roadText(r.pts)}`);
+    fetch(FORM_URL,{method:"POST",mode:"no-cors",body:b,keepalive:true}).catch(()=>{});}catch(e){}
+  teamToGraph(live.graph);rnEkipYollari();teamDraw();
+  return r;
+}
+async function izKaydet(){
+  if(!iz.aday)return;
+  let tol=4,p=sadelestir(iz.aday.pts,tol);while(p.length>120&&tol<60){tol*=1.6;p=sadelestir(iz.aday.pts,tol);}
+  const r=await ekipYoluKaydet(p,"Tarla yolu (iz)");if(!r)return;
+  izSifirla();$("liveSub").textContent="Yol kaydedildi; bundan sonraki rotalarda kullanılır.";
+  if(!live.arrived){live.legs[live.cur]=null;liveRecalc(false);}
+}
 function followUI(){$("liveFollow").textContent="Takip: "+(live.follow?"açık":"kapalı");}
 function voiceUI(){$("liveVoice").textContent="Ses: "+(live.voice?"açık":"kapalı");}
 function drawLeg(leg,style){
-  const n=leg.pts.length;const hasHead=leg.head>30&&n>2,hasTail=leg.tail>8&&n>2;
+  const n=leg.pts.length;const hasHead=leg.head>30&&n>2,hasTail=leg.tail>8&&n>=2;
   const mid=leg.pts.slice(hasHead?1:0,hasTail?n-1:n);
   if(mid.length>1){L.polyline(mid,{color:"#FFFFFF",weight:8,opacity:style==="cur"?.7:.4}).addTo(live.routeLyr);L.polyline(mid,{color:"#A23A2C",weight:style==="cur"?4:3,opacity:style==="cur"?1:.7}).addTo(live.routeLyr);}
   const dash=pts=>{L.polyline(pts,{color:"#000",weight:6,opacity:.35}).addTo(live.routeLyr);L.polyline(pts,{color:"#FFFFFF",weight:3,dashArray:"6 8",opacity:1}).addTo(live.routeLyr);};
@@ -1228,7 +1560,7 @@ function liveOpen(p){liveStart([p]);}
 function liveStart(stops){
   liveInit();if(!live.map||!stops.length)return;
   Object.assign(live,{stops,cur:0,legs:new Array(stops.length).fill(null),legErr:new Array(stops.length).fill(""),legMsg:"",p:stops[0],first:true,offCount:0,busy:false,said:{},arrived:false,follow:true});
-  if(live.tracks)live.tracks.clearLayers();live.tiles=new Set();live.graph=null;live.routeLyr.clearLayers();
+  if(live.tracks)live.tracks.clearLayers();live.tiles=new Set();live.graph=null;live.routeLyr.clearLayers();live.rnCiz=new Set();live.rnNesil=rn.nesil;liveAgCiz();izSifirla();
   draw.on=false;draw.pts=[];if(draw.lyr)draw.lyr.clearLayers();drawUI();teamLoad().then(teamDraw);
   $("live").hidden=false;$("liveInfo").textContent="GPS bekleniyor…";$("liveInfo").className="info";$("liveSub").textContent="";$("liveNext").hidden=true;followUI();voiceUI();liveTitle();
   setTimeout(()=>live.map.invalidateSize(),50);
@@ -1253,7 +1585,7 @@ async function liveRecalc(all){
     const prog=(i,n)=>{$("liveSub").textContent=`Yol ağı yükleniyor ${i}/${n}…`;};
     live.legs[cur]=await computeLeg(me,st[cur],prog);
     if(live.stops!==st)return;
-    live.offCount=0;live.said={};drawAllLegs();
+    live.offCount=0;live.said={};liveAgCiz();drawAllLegs();
     if(live.first){live.first=false;live.map.fitBounds(live.legs[cur].pts,{padding:[40,40],maxZoom:17});}
     const t=live.legs[cur].total;konus(`${st.length>1?harf(cur)+" durağına ":""}rota hazır, ${t>=1000?fmt(t/1000)+" kilometre":fmtInt(t)+" metre"}.`);
     liveTick();
@@ -1261,7 +1593,7 @@ async function liveRecalc(all){
       for(let tur=0;tur<2;tur++){
         for(let i=cur+1;i<st.length;i++){if(live.stops!==st)return;if(live.legs[i])continue;
           live.legMsg=`${harf(i-1)}→${harf(i)} rotası hesaplanıyor…`;liveTick();
-          try{live.legs[i]=await computeLeg(st[i-1],st[i],null);live.legErr[i]="";drawAllLegs();}
+          try{live.legs[i]=await computeLeg(yolSonu(live.legs[i-1],st[i-1]),st[i],null);live.legErr[i]="";liveAgCiz();drawAllLegs();}
           catch(e){live.legs[i]=null;live.legErr[i]=e.message;await sleep(4000);}}
         if(!live.legs.some((l,i)=>i>cur&&!l))break;
       }
@@ -1273,6 +1605,7 @@ async function liveRecalc(all){
 function liveUpdate(pos){
   const p=live.p;if(!p)return;
   const m={lat:pos.coords.latitude,lon:pos.coords.longitude};me=m;
+  try{izEkle(pos);}catch(e){}
   const hd=(pos.coords.heading!=null&&!isNaN(pos.coords.heading)&&(pos.coords.speed||0)>0.8)?pos.coords.heading:live.lastHeading;live.lastHeading=hd;
   const html=hd!=null?`<div class="me-arrow" style="transform:rotate(${hd.toFixed(0)}deg)"></div>`:'<div class="me-icon"></div>';
   const ic=L.divIcon({className:"",html,iconSize:[22,26],iconAnchor:[11,15]});
@@ -1319,6 +1652,7 @@ $("liveFollow").onclick=()=>{live.follow=!live.follow;followUI();if(live.follow&
 $("liveVoice").onclick=()=>{live.voice=!live.voice;voiceUI();if(live.voice)konus("Sesli yönlendirme açık.");};
 $("liveNext").onclick=liveNextStop;
 $("liveDraw").onclick=drawStart;
+$("liveIz").onclick=izKaydet;
 $("drawUndo").onclick=()=>{draw.pts.pop();drawRender();};
 $("drawSave").onclick=drawSave;
 $("drawCancel").onclick=drawStop;
@@ -1328,7 +1662,7 @@ function lonLat2tile(lat,lon,z){const n=Math.pow(2,z);const x=Math.floor((lon+18
 function fillOffIlce(){const sel=$("offIlce");sel.innerHTML="";const arr=veri.manifest&&veri.manifest.ilceler.length?veri.manifest.ilceler.map(x=>x.ad):ILCELER_STATIK;arr.forEach(t=>sel.appendChild(new Option(t,t)));if(state.sonIlce&&[...sel.options].some(o=>o.value===state.sonIlce))sel.value=state.sonIlce;}
 async function offListe(){
   const m=(await idbGet("off-manifest"))||{};const ks=Object.keys(m);
-  $("offList").textContent=ks.length?"İndirilen: "+ks.map(k=>`${k} (${m[k].tarih}, ${m[k].mb} MB)`).join(" · "):"Henüz indirilen ilçe yok.";
+  $("offList").textContent=ks.length?"İndirilen: "+ks.map(k=>`${k} (${m[k].tarih}, ${m[k].mb} MB${m[k].rn?"":", yol ağı eski: yeniden indirin"})`).join(" · "):"Henüz indirilen ilçe yok.";
   $("offSub").textContent=ks.length?`${ks.length} ilçe`:"";
 }
 let offRunning=false;
@@ -1348,29 +1682,30 @@ $("offBtn").onclick=async()=>{
       cat.parts={};cat.sira=[];}
     if(!isFinite(minLa))throw new Error("ilçe sınırı hesaplanamadı");
     const bb={minLa:minLa-0.01,maxLa:maxLa+0.01,minLo:minLo-0.01,maxLo:maxLo+0.01};
-    // 2) yol agi
-    const tl=tilesFor(bb);if(tl.length>42)throw new Error("ilçe alanı çok geniş ("+tl.length+" parça)");
+    // 2) yol agi: hazir karolar (OSM + uydu tespiti tarla yollari) ve il geneli ana yollar
+    await rnSurumSor();if(!(await rnHazir()))throw new Error("yol ağı sürüm bilgisi alınamadı");
+    const tl=rnKarolar([{lat:bb.minLa,lon:bb.minLo},{lat:bb.maxLa,lon:bb.maxLo}],0.03);
+    const adlar=tl.map(k=>fnv("r"+k)).concat([fnv("rm")]);
     let yolEksik=[];
     for(let tekrar=0;tekrar<2;tekrar++){
-      const sira=tekrar===0?tl:yolEksik;yolEksik=[];
-      for(let i=0;i<sira.length;i++){const yazi=`${ad}: yol ağı indiriliyor (${i+1}/${sira.length})${tekrar?" — eksikler yeniden":""}…`;ilerle(0.3+0.45*i/sira.length,yazi);
-        try{const d=await fetchTile(sira[i][0],sira[i][1],t=>ilerle(0.3+0.45*i/sira.length,yazi+` sunucu yoğun, bekleniyor (${t}/3)`));bayt+=JSON.stringify(d).length;}
-        catch(err){if(!navigator.onLine)throw err;yolEksik.push(sira[i]);}
-        await sleep(400);}
+      const sira=tekrar===0?adlar:yolEksik;yolEksik=[];
+      for(let i=0;i<sira.length;i++){ilerle(0.3+0.2*i/sira.length,`${ad}: yol ağı indiriliyor (${i+1}/${sira.length})${tekrar?" — eksikler yeniden":""}…`);
+        try{const b=await rnHam(sira[i],true);if(b)bayt+=b.byteLength;}
+        catch(err){if(!navigator.onLine)throw err;yolEksik.push(sira[i]);}}
       if(!yolEksik.length)break;
-      ilerle(0.75,`${ad}: ${yolEksik.length} yol ağı parçası alınamadı, 20 sn sonra yeniden denenecek…`);await sleep(20000);}
+      ilerle(0.5,`${ad}: ${yolEksik.length} yol ağı parçası alınamadı, 5 sn sonra yeniden denenecek…`);await sleep(5000);}
     // 3) dusuk cozunurluklu uydu (EOX Sentinel-2, z10-14)
     let uyduOk=0,uyduHata=0,uyduAtla=false;
     try{const c=await caches.open("uydu-v1");
       const liste=[];for(let z=10;z<=EOX_ZMAX;z++){const [x1,y1]=lonLat2tile(bb.maxLa,bb.minLo,z),[x2,y2]=lonLat2tile(bb.minLa,bb.maxLo,z);for(let x=x1;x<=x2;x++)for(let y=y1;y<=y2;y++)liste.push(EOX_URL.replace("{z}",z).replace("{x}",x).replace("{y}",y));}
       if(liste.length>3500){uyduAtla=true;}
-      else{for(let i=0;i<liste.length;i++){if(i%20===0)ilerle(0.75+0.25*i/liste.length,`${ad}: uydu altlığı indiriliyor (${i+1}/${liste.length})…`);
+      else{for(let i=0;i<liste.length;i++){if(i%20===0)ilerle(0.5+0.5*i/liste.length,`${ad}: uydu altlığı indiriliyor (${i+1}/${liste.length})…`);
         const u=liste[i];if(await c.match(u)){uyduOk++;continue;}
         try{const r=await fetch(u,{mode:"cors",signal:AbortSignal.timeout(20000)});if(r.ok){await c.put(u,r.clone());bayt+=+(r.headers.get("content-length")||25000);uyduOk++;}else uyduHata++;}
         catch(err){uyduHata++;if(uyduHata>25&&uyduOk===0){uyduAtla=true;break;}}}}
     }catch(err){uyduAtla=true;}
-    const m=(await idbGet("off-manifest"))||{};m[ad]={tarih:new Date().toLocaleDateString("tr-TR"),mb:+(bayt/1e6).toFixed(1),tiles:tl.map(t=>t.join(",")),uydu:uyduOk};await idbPut("off-manifest",m);
-    ilerle(1,`${ad} indirildi: ${cat.p.length} mahalle parseli, ${tl.length-yolEksik.length}/${tl.length} yol ağı parçası${yolEksik.length?" (eksik parçalar için daha sonra yeniden İlçeyi indir'e basın; inenler tekrar inmez)":""}, uydu altlığı ${uyduAtla?"alınamadı (internetli kullanımda normal uydu, çevrimdışında yol ağı görünümü)":uyduOk+" karo"}. Toplam ${(bayt/1e6).toFixed(1)} MB.`);
+    const m=(await idbGet("off-manifest"))||{};m[ad]={tarih:new Date().toLocaleDateString("tr-TR"),mb:+(bayt/1e6).toFixed(1),tiles:tl,uydu:uyduOk,rn:rn.ver};await idbPut("off-manifest",m);
+    ilerle(1,`${ad} indirildi: ${cat.p.length} mahalle parseli, tarla yolları dahil yol ağı ${adlar.length-yolEksik.length}/${adlar.length} parça${yolEksik.length?" (eksik parçalar için daha sonra yeniden İlçeyi indir'e basın; inenler tekrar inmez)":""}, uydu altlığı ${uyduAtla?"alınamadı (internetli kullanımda normal uydu, çevrimdışında yol ağı görünümü)":uyduOk+" karo"}. Toplam ${(bayt/1e6).toFixed(1)} MB.`);
     $("offMsg").className=yolEksik.length?"msg err":"msg ok";await offListe();
   }catch(err){show($("offMsg"),"İndirme yarım kaldı: "+err.message+". Tekrar deneyin; inen kısımlar saklanır.","err");}
   finally{offRunning=false;$("offBtn").disabled=false;}
