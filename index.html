@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Kayseri Parsel Rota</title>
 <meta name="theme-color" content="#134A40">
-<meta name="version" content="r32">
+<meta name="version" content="r33">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
@@ -174,7 +174,7 @@ summary{cursor:pointer;font-weight:700}
     </div>
     <div id="addMsg" class="msg" hidden></div>
     <div class="row" id="goRow" hidden>
-      <a id="goBtn" class="btn big grow red" href="#" target="_blank" rel="noopener">Yol tarifi al</a>
+      <a id="goBtn" class="btn big grow red" href="#">OsmAnd ile yol tarifi al</a>
     </div>
     <div id="results" hidden>
       <div class="rh">Arama sonucu <small id="resSub"></small></div>
@@ -264,7 +264,7 @@ summary{cursor:pointer;font-weight:700}
   </div>
   <div id="liveMap"></div>
   <div class="livebtns row">
-    <a id="liveGo" class="btn gold grow" href="#" target="_blank" rel="noopener">Google ile yol noktasına git</a>
+    <a id="liveGo" class="btn gold grow" href="#">OsmAnd ile git</a>
     <button type="button" id="liveTracks" class="grow">Tarla yolları</button>
     <button type="button" id="liveCenter" class="grow">Beni ortala</button>
   </div>
@@ -277,7 +277,7 @@ summary{cursor:pointer;font-weight:700}
 "use strict";
 const ILCELER_STATIK=["Akkışla","Bünyan","Develi","Felahiye","Hacılar","İncesu","Kocasinan","Melikgazi","Özvatan","Pınarbaşı","Sarıoğlan","Sarız","Talas","Tomarza","Yahyalı","Yeşilhisar"];
 const MERKEZ={lat:38.7205,lon:35.4826};
-const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", SURUM="r32 · 29.10.2026 14:50";
+const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", SURUM="r33 · 29.10.2026 15:10";
 const $=id=>document.getElementById(id);
 
 /* ---------- Giris kaydi (Google Formu) ---------- */
@@ -722,6 +722,12 @@ function active(){return state.items.filter(p=>hasPos(p)&&!p.done);}
 function label(p){return `${baslik(p.ilce||"?")} / ${baslik(p.mahalle||"?")} · ${p.ada||"?"} ada ${p.parsel||"?"} parsel`;}
 const ll=p=>`${p.lat.toFixed(6)},${p.lon.toFixed(6)}`;
 const navPt=p=>(p.yol&&p.yol.m<=4000)?p.yol:p;
+const IOS=/iPad|iPhone|iPod/.test(navigator.userAgent);
+function osmandUrl(p){ // OsmAnd: OpenStreetMap verisiyle, tarla yollari dahil navigasyon
+  const name=encodeURIComponent(label(p).slice(0,60));
+  if(IOS)return `osmandmaps://navigate?lat=${p.lat.toFixed(6)}&lon=${p.lon.toFixed(6)}&profile=car&force=true`;
+  return `intent://navigate?dest_lat=${p.lat.toFixed(6)}&dest_lon=${p.lon.toFixed(6)}&dest_name=${name}&profile=car&force=true#Intent;scheme=osmand.api;S.browser_fallback_url=${encodeURIComponent("https://play.google.com/store/apps/details?id=net.osmand")};end`;
+}
 function yandexUrl(p){return `https://yandex.com.tr/maps/?rtext=~${p.lat.toFixed(6)},${p.lon.toFixed(6)}&rtt=auto`;}
 // Duraklar parselin kendi konumudur: Google en yakin yola kadar goturur, parsele kesikli cizgi ceker.
 // snap=true verilirse yola en yakin nokta kullanilir (canli ekrandaki "yol noktasina git").
@@ -763,7 +769,8 @@ function render(){
     m.textContent=parts.join(" · ");
     const a=document.createElement("div");a.className="acts";
     if(pos){
-      const go=document.createElement("a");go.className="btn primary";go.href=dirUrl([p]);go.target="_blank";go.rel="noopener";go.textContent="Google";a.appendChild(go);
+      const os=document.createElement("a");os.className="btn primary";os.href=osmandUrl(p);os.textContent="OsmAnd";a.appendChild(os);
+      const go=document.createElement("a");go.className="btn";go.href=dirUrl([p]);go.target="_blank";go.rel="noopener";go.textContent="Google";a.appendChild(go);
       const ya=document.createElement("a");ya.className="btn";ya.href=yandexUrl(p);ya.target="_blank";ya.rel="noopener";ya.textContent="Yandex";a.appendChild(ya);
       const sg=document.createElement("button");sg.type="button";sg.className="gold";sg.textContent="Sahada git";sg.onclick=()=>liveOpen(p);a.appendChild(sg);
       const mp=document.createElement("button");mp.type="button";mp.textContent="Haritada";mp.onclick=()=>{if(map){map.setView([p.lat,p.lon],16);$("mapSec").scrollIntoView({behavior:"smooth"});}};a.appendChild(mp);
@@ -777,9 +784,9 @@ function render(){
     b.append(t,m,a);li.append(numEl,b);ol.appendChild(li);
   });
   const legs=$("legs");legs.innerHTML="";const MAXDURAK=9;
-  if(act.length>1){const part=act.slice(0,MAXDURAK);const aEl=document.createElement("a");aEl.className="btn big red";aEl.href=dirUrl(part);aEl.target="_blank";aEl.rel="noopener";
-    aEl.textContent=act.length<=MAXDURAK?`${part.length} durak için yol tarifi al`:`İlk ${MAXDURAK} durak için yol tarifi al`;legs.appendChild(aEl);
-    const alt=document.createElement("a");alt.className="btn ghost";alt.href=dirUrlAlt(part);alt.target="_blank";alt.rel="noopener";alt.style.fontSize="13px";alt.style.padding="6px 10px";alt.textContent="Duraklar görünmezse: alternatif bağlantı";legs.appendChild(alt);}
+  if(act.length>1){const next=act[0];const aEl=document.createElement("a");aEl.className="btn big red";aEl.href=osmandUrl(next);
+    aEl.textContent=`1. durağa OsmAnd ile git (${act.length} durak sırada)`;legs.appendChild(aEl);
+    const part=act.slice(0,MAXDURAK);const alt=document.createElement("a");alt.className="btn ghost";alt.href=dirUrl(part);alt.target="_blank";alt.rel="noopener";alt.style.fontSize="13px";alt.style.padding="6px 10px";alt.textContent=act.length<=MAXDURAK?`Tüm rota Google Maps'te (${part.length} durak)`:`İlk ${MAXDURAK} durak Google Maps'te`;legs.appendChild(alt);}
   drawMap(act,sp);
 }
 
@@ -801,13 +808,13 @@ function readForm(){return {ilce:$("ilce").value||"",ada:normNo($("ada").value),
 function clearForm(){["ada","parsel","not"].forEach(i=>$(i).value="");$("results").hidden=true;$("goRow").hidden=true;}
 function eklendiMesaji(p){
   show($("addMsg"),`Listeye eklendi: ${label(p)}${p.alan?" · "+fmt(p.alan/1000)+" da":""}${p.nitelik?" · "+baslik(p.nitelik):""}`,"ok");
-  $("goBtn").href=dirUrl([p]);$("goRow").hidden=false;
+  $("goBtn").href=osmandUrl(p);$("goRow").hidden=false;
 }
 const pKey=p=>normName(p.ilce)+"|"+normName(p.mahalle)+"|"+normNo(p.ada)+"|"+normNo(p.parsel);
 function bulDup(p){const k=pKey(p);return state.items.find(x=>!x.ornek&&pKey(x)===k)||null;}
 function dedupe(){const seen=new Set();state.items=state.items.filter(x=>{if(x.ornek)return true;const k=pKey(x);if(seen.has(k))return false;seen.add(k);return true;});}
 function autoSort(){const act=active();if(act.length<2)return;const ord=optimize(act,startPoint());const others=state.items.filter(p=>!act.includes(p));state.items=ord.concat(others);}
-function ekle(p){const d=bulDup(p);if(d){const sira=active().indexOf(d)+1;show($("addMsg"),`Bu parsel zaten listede${sira?` (sıra ${sira})`:""}: ${label(d)}`,"err");$("goBtn").href=dirUrl([d]);$("goRow").hidden=!hasPos(d);return false;}
+function ekle(p){const d=bulDup(p);if(d){const sira=active().indexOf(d)+1;show($("addMsg"),`Bu parsel zaten listede${sira?` (sıra ${sira})`:""}: ${label(d)}`,"err");$("goBtn").href=osmandUrl(d);$("goRow").hidden=!hasPos(d);return false;}
   dropSamples();state.items.push(p);autoSort();needFit=true;save();render();snapAll();return true;}
 $("findBtn").onclick=async()=>{
   const f=readForm();
@@ -1067,7 +1074,7 @@ function liveInit(){
 function liveOpen(p){
   liveInit();if(!live.map)return;
   live.p=p;live.first=true;live.graph=null;live.lastCalc=null;if(live.path){live.path.remove();live.path=null;}if(liveRoad.layer){liveRoad.layer.remove();liveRoad.layer=null;}Object.assign(liveRoad,{line:null,km:null,dk:null,at:null,busy:false,err:""});live.tracks&&live.tracks.clearLayers();live.tracksKey=null;$("live").hidden=false;$("liveTitle").textContent=label(p);$("liveInfo").textContent="GPS bekleniyor…";$("liveSub").textContent="";
-  $("liveGo").href=dirUrl([p],true);
+  $("liveGo").href=osmandUrl(p);
   setTimeout(()=>live.map.invalidateSize(),50);
   live.lyr.clearLayers();
   if(p.ring&&p.ring.length>2)L.polygon(p.ring,{color:"#AA8A5E",weight:2,fillColor:"#134A40",fillOpacity:.2}).addTo(live.lyr);
