@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Kayseri Parsel Rota</title>
 <meta name="theme-color" content="#134A40">
-<meta name="version" content="r29">
+<meta name="version" content="r30">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
@@ -277,8 +277,21 @@ summary{cursor:pointer;font-weight:700}
 "use strict";
 const ILCELER_STATIK=["Akkışla","Bünyan","Develi","Felahiye","Hacılar","İncesu","Kocasinan","Melikgazi","Özvatan","Pınarbaşı","Sarıoğlan","Sarız","Talas","Tomarza","Yahyalı","Yeşilhisar"];
 const MERKEZ={lat:38.7205,lon:35.4826};
-const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", SURUM="r29 · 27.10.2026 23:40";
+const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", SURUM="r30 · 29.10.2026 13:15";
 const $=id=>document.getElementById(id);
+
+/* ---------- Giris kaydi (Google Formu) ---------- */
+const FORM_URL="https://docs.google.com/forms/d/e/1FAIpQLSeo0BD_FnQZEYITnXHVJvC-Vb7r45AZDIbb5F212zUeXm2WDw/formResponse";
+const FORM_F={cihaz:"entry.2127258542",olay:"entry.865864983",surum:"entry.1910671776"};
+function cihazId(){let id=null;try{id=localStorage.getItem("kpr-cihaz");}catch(e){}
+  if(!id){const h="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";id="";for(let i=0;i<6;i++)id+=h[Math.floor(Math.random()*h.length)];try{localStorage.setItem("kpr-cihaz",id);}catch(e){}}
+  return id;}
+function kayit(olay){
+  try{const b=new URLSearchParams();b.append(FORM_F.cihaz,cihazId());b.append(FORM_F.olay,olay);b.append(FORM_F.surum,SURUM.split(" ")[0]);
+    fetch(FORM_URL,{method:"POST",mode:"no-cors",body:b,keepalive:true}).catch(()=>{});}catch(e){}
+}
+function gunlukKayit(){const g=new Date().toISOString().slice(0,10);let son=null;try{son=localStorage.getItem("kpr-son-acilis");}catch(e){}
+  if(son!==g){try{localStorage.setItem("kpr-son-acilis",g);}catch(e){}kayit("acilis");}}
 
 /* ---------- Yardimcilar ---------- */
 const asciiUp=s=>String(s||"").toLocaleUpperCase("tr-TR").replace(/İ/g,"I").replace(/Ş/g,"S").replace(/Ğ/g,"G").replace(/Ü/g,"U").replace(/Ö/g,"O").replace(/Ç/g,"C");
@@ -342,7 +355,7 @@ async function manifestAc(){ // anahtar dogrulanir, sifreli ilce listesi acilir
 }
 function veriUI(){
   const m=veri.manifest;if(!m)return;
-  if(veri.key){$("veriText").textContent=`· açık · ${m.ilceler.length} ilçe · ${fmtInt(m.toplam)} parsel`;$("pwWrap").hidden=true;$("veriLock").hidden=false;$("svcState").textContent="";}
+  if(veri.key){$("veriText").textContent=`· açık · ${m.ilceler.length} ilçe · ${fmtInt(m.toplam)} parsel · cihaz ${cihazId()}`;$("pwWrap").hidden=true;$("veriLock").hidden=false;$("svcState").textContent="";}
   else{$("veriText").textContent="· kilitli";$("pwWrap").hidden=false;$("veriLock").hidden=true;$("svcState").textContent="";}
 }
 $("pwBtn").onclick=async()=>{
@@ -352,9 +365,9 @@ $("pwBtn").onclick=async()=>{
     const raw=await deriveKey(pw,m.salt,m.iter||600000);veri.key=await importKey(raw);
     await manifestAc();
     try{localStorage.setItem(KKEY,bytesToB64(raw));}catch(e){}
-    $("pw").value="";veriUI();show($("addMsg"),"Ekip verisi açıldı. İlçe, ada ve parseli yazıp arayabilirsiniz.","ok");
+    $("pw").value="";veriUI();show($("addMsg"),"Ekip verisi açıldı. İlçe, ada ve parseli yazıp arayabilirsiniz.","ok");kayit("giris");
     veri.ilce={};fillIlce();
-  }catch(e){veri.key=null;show($("addMsg"),"Parola yanlış.","err");}
+  }catch(e){veri.key=null;show($("addMsg"),"Parola yanlış.","err");kayit("yanlis-parola");}
   finally{$("pwBtn").disabled=false;}
 };
 $("veriLock").onclick=()=>{veri.key=null;veri.ilce={};veri.manifest.ilceler=[];veri.manifest.toplam=0;try{localStorage.removeItem(KKEY);}catch(e){}fillIlce();veriUI();};
@@ -1098,6 +1111,7 @@ fillIlce();
 render();
 checkHash();
 veriBaslat();
+gunlukKayit();
 snapAll();
 })();
 </script>
