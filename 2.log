@@ -1,0 +1,9 @@
+-rw-r--r-- 1 runner runner 651919591 Oct 29 16:23 w/tr.osm.pbf
+total 777100
+drwxr-xr-x 2 runner runner      4096 Oct 29 16:23 .
+drwxr-xr-x 7 runner runner      4096 Oct 29 16:22 ..
+-rw-r--r-- 1 runner runner  51882741 Oct 29 16:23 k.osm.pbf
+-rw-r--r-- 1 runner runner  13889912 Oct 29 16:23 kh.osm.pbf
+-rw-r--r-- 1 runner runner  78034106 Oct 29 16:23 osm.geojsonseq
+-rw-r--r-- 1 runner runner 651919591 Oct 29 16:23 tr.osm.pbf
+155736 w/osm.geojsonseq

@@ -1,0 +1,10 @@
+-rw-r--r-- 1 runner runner 774645852 Oct 29 16:23 w/wa.zip
+['Western_Asia.tsv']
+TUR satir 4590551
+total 1513456
+drwxr-xr-x 2 runner runner       4096 Oct 29 16:24 .
+drwxr-xr-x 7 runner runner       4096 Oct 29 16:22 ..
+-rw-r--r-- 1 runner runner   51882741 Oct 29 16:23 k.osm.pbf
+-rw-r--r-- 1 runner runner   13889912 Oct 29 16:23 kh.osm.pbf
+-rw-r--r-- 1 runner runner   78034106 Oct 29 16:23 osm.geojsonseq
+-rw-r--r-- 1 runner runner 1405944356 Oct 29 16:24 tur.tsv
