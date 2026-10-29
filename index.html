@@ -82,6 +82,9 @@ ul.res button .d{font-size:13px;color:var(--label);font-weight:600;text-align:ri
 #map:fullscreen{width:100%;height:100%;border-radius:0}
 .fs-btn{display:block;width:30px;height:30px;line-height:30px;text-align:center;font-size:17px;background:#fff;color:#111;border:none;border-radius:4px;padding:0;cursor:pointer;box-shadow:0 1px 5px rgba(0,0,0,.4)}
 .fs-btn:hover{background:#f4f4f4}
+.leaflet-container .leaflet-control-attribution{display:none}
+.leaflet-container.atif-acik .leaflet-control-attribution{display:block;max-width:calc(100vw - 90px);white-space:normal}
+.atif-btn{font-family:inherit;font-size:11px;font-weight:600;line-height:1.6;background:rgba(255,255,255,.85);color:#134A40;border:none;border-radius:10px;padding:1px 8px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.3)}
 .two-hint{position:absolute;inset:0;z-index:900;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45);color:#fff;font:700 16px var(--f-body);text-align:center;padding:16px;pointer-events:none;opacity:0;transition:opacity .25s}
 .two-hint.on{opacity:1}
 .num-icon{background:var(--brand);color:#fff;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font:700 12px var(--f-body);border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)}
@@ -249,7 +252,7 @@ summary{cursor:pointer;font-weight:700}
 
   <section id="excel">
     <h2>Excel ile toplu iş</h2>
-    <p class="hint">Sütunlar: <span class="mono">İlçe, Mahalle, Ada, Parsel</span> (isteğe bağlı <span class="mono">Not, Enlem, Boylam</span>). Dosya seçilince parseller listeye eklenir, konumları bulunur ve en kısa ziyaret sırasına dizilir.</p>
+    <p class="hint">Sütunlar: <span class="mono">İlçe, Mahalle, Ada, Parsel</span></p>
     <label>Dosya seçin (.xlsx, .xls, .csv)
       <input id="file" type="file" accept=".xlsx,.xls,.csv">
     </label>
@@ -302,7 +305,7 @@ summary{cursor:pointer;font-weight:700}
 "use strict";
 const ILCELER_STATIK=["Akkışla","Bünyan","Develi","Felahiye","Hacılar","İncesu","Kocasinan","Melikgazi","Özvatan","Pınarbaşı","Sarıoğlan","Sarız","Talas","Tomarza","Yahyalı","Yeşilhisar"];
 const MERKEZ={lat:38.7205,lon:35.4826};
-const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", SURUM="r42 · 29.10.2026 21:00";
+const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", SURUM="r43 · 29.10.2026 22:20";
 const $=id=>document.getElementById(id);
 
 /* ---------- Giris kaydi (Google Formu) ---------- */
@@ -391,7 +394,7 @@ $("pwBtn").onclick=async()=>{
     const raw=await deriveKey(pw,m.salt,m.iter||600000);veri.key=await importKey(raw);
     await manifestAc();
     try{localStorage.setItem(KKEY,bytesToB64(raw));}catch(e){}
-    $("pw").value="";veriUI();show($("addMsg"),"Ekip verisi açıldı. İlçe, ada ve parseli yazıp arayabilirsiniz.","ok");kayit("giris");veriBaslatSonra.forEach(f=>{try{f();}catch(e){}});
+    $("pw").value="";veriUI();$("addMsg").hidden=true;kayit("giris");veriBaslatSonra.forEach(f=>{try{f();}catch(e){}});
     veri.ilce={};fillIlce();
   }catch(e){veri.key=null;show($("addMsg"),"Parola yanlış.","err");kayit("yanlis-parola");}
   finally{$("pwBtn").disabled=false;}
@@ -607,14 +610,29 @@ function startPoint(){
   if(state.start==="custom"){const p=parsePos(state.custom);return p&&!p.uzak?p:null;}
   return null;}
 
+/* ---------- Harita kaynak bilgisi: lisans geregi acilista 5 sn tam metin, sonra kucuk "Esri ⓘ" dugmesi ---------- */
+const ESRI_ATIF="Powered by Esri · Kaynak: Esri, Maxar, Earthstar Geographics";
+function atifKur(m,katmanlar){ // katmanlar: [[katman,"kisa ad"],...]
+  m.attributionControl.setPrefix(false);m.attributionControl.setPosition("bottomleft");m.attributionControl.addAttribution(RN_ATIF);
+  const C=L.Control.extend({options:{position:"bottomleft"},onAdd:function(){
+    const b=L.DomUtil.create("button","atif-btn");b.type="button";b.title="Harita ve veri kaynakları";b.setAttribute("aria-label","Harita ve veri kaynakları");
+    L.DomEvent.disableClickPropagation(b);L.DomEvent.on(b,"click",()=>m.getContainer().classList.toggle("atif-acik"));return b;}});
+  const c=new C().addTo(m);
+  const etiket=()=>{let ad="";katmanlar.forEach(([k,a])=>{if(m.hasLayer(k))ad=a;});c.getContainer().textContent=(ad?ad+" ":"")+"ⓘ";};
+  m.on("layeradd layerremove",e=>{if(katmanlar.some(([k])=>k===e.layer))etiket();});etiket();
+  const kap=m.getContainer();kap.classList.add("atif-acik");
+  let bitti=false;const kapat=()=>{if(bitti)return;bitti=true;kap.classList.remove("atif-acik");};
+  setTimeout(kapat,5000);L.DomEvent.on(kap,"touchstart mousedown wheel",kapat);
+}
+
 /* ---------- Harita ---------- */
 let map=null,parcelLayer=null,routeLayer=null,meMarker=null,needFit=true;
 function initMap(){
   if(typeof L==="undefined"){$("map").textContent="Harita kütüphanesi yüklenemedi.";return;}
   map=L.map("map",{zoomControl:true,dragging:!COARSE}).setView([MERKEZ.lat,MERKEZ.lon],9);
   const osm=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"});
-  const sat=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,attribution:"Esri World Imagery"});
-  sat.addTo(map);map.attributionControl.addAttribution(RN_ATIF);
+  const sat=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,attribution:ESRI_ATIF});
+  sat.addTo(map);atifKur(map,[[sat,"Esri"],[osm,"© OSM"]]);
   L.control.layers({"Uydu":sat,"Harita":osm},null,{position:"topright"}).addTo(map);
   const FS=L.Control.extend({onAdd:function(){const b=L.DomUtil.create("button","fs-btn");b.type="button";b.id="fsBtn";b.title="Tam ekran";b.setAttribute("aria-label","Tam ekran");b.textContent="⛶";L.DomEvent.disableClickPropagation(b);L.DomEvent.on(b,"click",toggleFS);return b;}});
   new FS({position:"topleft"}).addTo(map);
@@ -1478,7 +1496,7 @@ async function drawSave(){
 function liveInit(){
   if(live.map||typeof L==="undefined")return;
   live.map=L.map("liveMap",{zoomControl:false,preferCanvas:true}).setView([MERKEZ.lat,MERKEZ.lon],13);
-  const sat=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,attribution:"Esri World Imagery"});
+  const sat=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,attribution:ESRI_ATIF});
   const osm=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"});
   const eox=L.tileLayer(EOX_URL,{maxZoom:19,maxNativeZoom:EOX_ZMAX,attribution:"Sentinel-2 cloudless · EOX (CC BY-NC-SA)"});
   const bos=L.tileLayer("",{attribution:""});
@@ -1486,7 +1504,7 @@ function liveInit(){
   (navigator.onLine?sat:eox).addTo(live.map);
   L.control.layers({"Uydu":sat,"Uydu (çevrimdışı, düşük çözünürlük)":eox,"Harita":osm,"Yalnız yol ağı":bos},null,{position:"topright"}).addTo(live.map);L.control.zoom({position:"bottomright"}).addTo(live.map);
   window.addEventListener("offline",()=>{if(live.map&&live.map.hasLayer(sat)){live.map.removeLayer(sat);eox.addTo(live.map);}});
-  live.map.attributionControl.addAttribution(RN_ATIF);
+  atifKur(live.map,[[sat,"Esri"],[eox,"EOX"],[osm,"© OSM"]]);
   live.tracks=L.layerGroup().addTo(live.map);team.lyr=L.layerGroup().addTo(live.map);live.routeLyr=L.layerGroup().addTo(live.map);live.lyr=L.layerGroup().addTo(live.map);draw.lyr=L.layerGroup().addTo(live.map);
   live.map.on("dragstart",()=>{if(live.follow){live.follow=false;followUI();}});
   live.map.on("click",e=>{if(!draw.on)return;draw.pts.push([e.latlng.lat,e.latlng.lng]);drawRender();$("liveSub").textContent=`${draw.pts.length} nokta işaretlendi. Devam edin ya da Yolu kaydet deyin.`;});
