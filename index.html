@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Kayseri Parsel Rota</title>
 <meta name="theme-color" content="#134A40">
-<meta name="version" content="r37">
+<meta name="version" content="r38">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
@@ -113,7 +113,7 @@ summary{cursor:pointer;font-weight:700}
 .banner{background:var(--brand);color:var(--on-brand);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
 .banner button{background:var(--on-brand);color:var(--brand);border-color:var(--on-brand)}
 #live{position:fixed;inset:0;z-index:1000;background:var(--bg);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-#liveMap{flex:1;min-height:0;background:var(--soft)}
+#liveMap{flex:1;min-height:0;background:#3B4A3A}
 .livebar{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px max(16px,env(safe-area-inset-left,0px)) 10px max(16px,env(safe-area-inset-right,0px));background:var(--surface);border-bottom:1px solid var(--line)}
 .livebar b{font-family:var(--f-display);font-size:16px;display:block;overflow-wrap:anywhere}
 .livebar .info{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--brand)}
@@ -247,6 +247,18 @@ summary{cursor:pointer;font-weight:700}
     <div class="legs" id="legs"></div>
   </section>
 
+  <section id="offline">
+    <h2>Çevrimdışı kullanım <small id="offSub"></small></h2>
+    <p class="hint">İlçeyi indirince parseller, tarla yolları dahil yol ağı ve düşük çözünürlüklü uydu altlığı telefonda kalır; internet çekmeyen yerde de arama ve navigasyon çalışır.</p>
+    <div class="row">
+      <select id="offIlce" style="flex:1 1 160px"></select>
+      <button class="primary" id="offBtn" type="button">İlçeyi indir</button>
+    </div>
+    <div class="bar" id="offBar" hidden><i id="offFill"></i></div>
+    <div id="offMsg" class="msg" hidden></div>
+    <div id="offList" class="hint"></div>
+  </section>
+
   <section id="excel">
     <h2>Excel ile toplu iş</h2>
     <p class="hint">Sütunlar: <span class="mono">İlçe, Mahalle, Ada, Parsel</span> (isteğe bağlı <span class="mono">Not, Enlem, Boylam</span>). Dosya seçilince parseller listeye eklenir, konumları bulunur ve en kısa ziyaret sırasına dizilir.</p>
@@ -288,7 +300,7 @@ summary{cursor:pointer;font-weight:700}
 "use strict";
 const ILCELER_STATIK=["Akkışla","Bünyan","Develi","Felahiye","Hacılar","İncesu","Kocasinan","Melikgazi","Özvatan","Pınarbaşı","Sarıoğlan","Sarız","Talas","Tomarza","Yahyalı","Yeşilhisar"];
 const MERKEZ={lat:38.7205,lon:35.4826};
-const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", SURUM="r37 · 29.10.2026 16:50";
+const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", SURUM="r38 · 29.10.2026 17:40";
 const $=id=>document.getElementById(id);
 
 /* ---------- Giris kaydi (Google Formu) ---------- */
@@ -348,6 +360,7 @@ async function deriveKey(pw,saltB64,iter){
 async function importKey(raw){return crypto.subtle.importKey("raw",raw,{name:"AES-GCM"},false,["decrypt"]);}
 async function decryptBytes(u8){const iv=u8.slice(0,12),ct=u8.slice(12);return new Uint8Array(await crypto.subtle.decrypt({name:"AES-GCM",iv},veri.key,ct));}
 async function gunzipText(u8){const ds=new DecompressionStream("gzip");return await new Response(new Blob([u8]).stream().pipeThrough(ds)).text();}
+const veriBaslatSonra=[];
 async function veriBaslat(){
   let m=null;
   try{const r=await fetch("d/m.json",{cache:"no-store"});if(r.ok){m=await r.json();await idbPut("m.json",m);}}catch(e){}
@@ -356,7 +369,7 @@ async function veriBaslat(){
   veri.manifest={salt:m.s,iter:m.i,kontrol:m.k,surum:m.v,p:m.p,ilceler:[],toplam:0};$("veriBox").hidden=false;
   try{const raw=localStorage.getItem(KKEY);if(raw){veri.key=await importKey(b64ToBytes(raw));await manifestAc();}}
   catch(e){veri.key=null;try{localStorage.removeItem(KKEY);}catch(x){}}
-  fillIlce();veriUI();
+  fillIlce();veriUI();veriBaslatSonra.forEach(f=>{try{f();}catch(e){}});
 }
 async function manifestAc(){ // anahtar dogrulanir, sifreli ilce listesi acilir
   const m=veri.manifest;
@@ -376,7 +389,7 @@ $("pwBtn").onclick=async()=>{
     const raw=await deriveKey(pw,m.salt,m.iter||600000);veri.key=await importKey(raw);
     await manifestAc();
     try{localStorage.setItem(KKEY,bytesToB64(raw));}catch(e){}
-    $("pw").value="";veriUI();show($("addMsg"),"Ekip verisi açıldı. İlçe, ada ve parseli yazıp arayabilirsiniz.","ok");kayit("giris");
+    $("pw").value="";veriUI();show($("addMsg"),"Ekip verisi açıldı. İlçe, ada ve parseli yazıp arayabilirsiniz.","ok");kayit("giris");veriBaslatSonra.forEach(f=>{try{f();}catch(e){}});
     veri.ilce={};fillIlce();
   }catch(e){veri.key=null;show($("addMsg"),"Parola yanlış.","err");kayit("yanlis-parola");}
   finally{$("pwBtn").disabled=false;}
@@ -1006,6 +1019,8 @@ window.addEventListener("online",()=>{state.items.forEach(p=>{if(p.yolHata)delet
 const YON=["kuzey","kuzeydoğu","doğu","güneydoğu","güney","güneybatı","batı","kuzeybatı"];
 function bearing(a,b){const r=Math.PI/180;const y=Math.sin((b.lon-a.lon)*r)*Math.cos(b.lat*r);const x=Math.cos(a.lat*r)*Math.sin(b.lat*r)-Math.sin(a.lat*r)*Math.cos(b.lat*r)*Math.cos((b.lon-a.lon)*r);return (Math.atan2(y,x)*180/Math.PI+360)%360;}
 const TILE=0.1;
+const EOX_URL="https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2020_3857/default/g/{z}/{y}/{x}.jpg";
+const EOX_ZMAX=14;
 const live={map:null,lyr:null,tracks:null,routeLyr:null,me:null,acc:null,watch:null,p:null,wake:null,first:true,
   graph:null,tiles:new Set(),stops:[],cur:0,legs:[],legErr:[],legMsg:"",follow:true,voice:true,offCount:0,busy:false,said:{},arrived:false,lastHeading:null};
 function graphAdd(g,data){
@@ -1050,8 +1065,9 @@ async function fetchTile(la,lo){
 }
 function drawTracks(d){
   if(!live.tracks)return;
-  (d.elements||[]).forEach(w=>{if(!w.geometry)return;const iz=w.t==="track"||w.t==="path";if(!iz)return;
-    L.polyline(w.geometry.map(g=>[g.lat,g.lon]),{color:"#FFD54F",weight:2,dashArray:"6 5",opacity:.8,interactive:false}).addTo(live.tracks);});
+  (d.elements||[]).forEach(w=>{if(!w.geometry)return;const iz=w.t==="track"||w.t==="path";const pts=w.geometry.map(g=>[g.lat,g.lon]);
+    if(iz)L.polyline(pts,{color:"#FFD54F",weight:2,dashArray:"6 5",opacity:.8,interactive:false}).addTo(live.tracks);
+    else{const buyuk=/^(primary|secondary|trunk|motorway)/.test(w.t||"");L.polyline(pts,{color:"#FFFFFF",weight:buyuk?3:2,opacity:buyuk?.9:.6,interactive:false}).addTo(live.tracks);}});
 }
 async function ensureGraph(b,onProgress){
   const need=tilesFor(b).filter(([la,lo])=>!live.tiles.has(la+","+lo));
@@ -1163,7 +1179,12 @@ function liveInit(){
   live.map=L.map("liveMap",{zoomControl:false,preferCanvas:true}).setView([MERKEZ.lat,MERKEZ.lon],13);
   const sat=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,attribution:"Esri World Imagery"});
   const osm=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"});
-  sat.addTo(live.map);L.control.layers({"Uydu":sat,"Harita":osm},null,{position:"topright"}).addTo(live.map);L.control.zoom({position:"bottomright"}).addTo(live.map);
+  const eox=L.tileLayer(EOX_URL,{maxZoom:19,maxNativeZoom:EOX_ZMAX,attribution:"Sentinel-2 cloudless · EOX (CC BY-NC-SA)"});
+  const bos=L.tileLayer("",{attribution:"Yol ağı: © OpenStreetMap"});
+  live.base={sat,osm,eox,bos};
+  (navigator.onLine?sat:eox).addTo(live.map);
+  L.control.layers({"Uydu":sat,"Uydu (çevrimdışı, düşük çözünürlük)":eox,"Harita":osm,"Yalnız yol ağı":bos},null,{position:"topright"}).addTo(live.map);L.control.zoom({position:"bottomright"}).addTo(live.map);
+  window.addEventListener("offline",()=>{if(live.map&&live.map.hasLayer(sat)){live.map.removeLayer(sat);eox.addTo(live.map);}});
   live.tracks=L.layerGroup().addTo(live.map);team.lyr=L.layerGroup().addTo(live.map);live.routeLyr=L.layerGroup().addTo(live.map);live.lyr=L.layerGroup().addTo(live.map);draw.lyr=L.layerGroup().addTo(live.map);
   live.map.on("dragstart",()=>{if(live.follow){live.follow=false;followUI();}});
   live.map.on("click",e=>{if(!draw.on)return;draw.pts.push([e.latlng.lat,e.latlng.lng]);drawRender();$("liveSub").textContent=`${draw.pts.length} nokta işaretlendi. Devam edin ya da Yolu kaydet deyin.`;});
@@ -1287,6 +1308,53 @@ $("drawUndo").onclick=()=>{draw.pts.pop();drawRender();};
 $("drawSave").onclick=drawSave;
 $("drawCancel").onclick=drawStop;
 
+/* ---------- Cevrimdisi paket: ilce parselleri + yol agi + dusuk cozunurluklu uydu ---------- */
+function lonLat2tile(lat,lon,z){const n=Math.pow(2,z);const x=Math.floor((lon+180)/360*n);const y=Math.floor((1-Math.log(Math.tan(lat*Math.PI/180)+1/Math.cos(lat*Math.PI/180))/Math.PI)/2*n);return [x,y];}
+function fillOffIlce(){const sel=$("offIlce");sel.innerHTML="";const arr=veri.manifest&&veri.manifest.ilceler.length?veri.manifest.ilceler.map(x=>x.ad):ILCELER_STATIK;arr.forEach(t=>sel.appendChild(new Option(t,t)));if(state.sonIlce&&[...sel.options].some(o=>o.value===state.sonIlce))sel.value=state.sonIlce;}
+async function offListe(){
+  const m=(await idbGet("off-manifest"))||{};const ks=Object.keys(m);
+  $("offList").textContent=ks.length?"İndirilen: "+ks.map(k=>`${k} (${m[k].tarih}, ${m[k].mb} MB)`).join(" · "):"Henüz indirilen ilçe yok.";
+  $("offSub").textContent=ks.length?`${ks.length} ilçe`:"";
+}
+let offRunning=false;
+$("offBtn").onclick=async()=>{
+  if(offRunning)return;
+  if(!veriHazir()){show($("offMsg"),"Önce veri parolasını girin.","err");return;}
+  const ad=$("offIlce").value;const e=veriEntry(ad);if(!e){show($("offMsg"),ad+" ekip verisinde yok.","err");return;}
+  if(!navigator.onLine){show($("offMsg"),"İndirme için internet gerekli.","err");return;}
+  offRunning=true;$("offBtn").disabled=true;$("offBar").hidden=false;$("offFill").style.width="0%";
+  let bayt=0;const ilerle=(p,t)=>{$("offFill").style.width=Math.round(p*100)+"%";show($("offMsg"),t);};
+  try{
+    // 1) parseller
+    const cat=await loadIlceVeri(e);await loadIlceIdx(e,cat);
+    let minLa=Infinity,maxLa=-Infinity,minLo=Infinity,maxLo=-Infinity;
+    for(let i=0;i<cat.p.length;i++){ilerle(0.3*i/cat.p.length,`${ad}: parseller indiriliyor (${i+1}/${cat.p.length} mahalle)…`);
+      const part=await loadMahVeri(e,cat,i);part.rows.forEach(r=>{minLa=Math.min(minLa,r[2]);maxLa=Math.max(maxLa,r[2]);minLo=Math.min(minLo,r[3]);maxLo=Math.max(maxLo,r[3]);});
+      cat.parts={};cat.sira=[];}
+    if(!isFinite(minLa))throw new Error("ilçe sınırı hesaplanamadı");
+    const bb={minLa:minLa-0.01,maxLa:maxLa+0.01,minLo:minLo-0.01,maxLo:maxLo+0.01};
+    // 2) yol agi
+    const tl=tilesFor(bb);if(tl.length>42)throw new Error("ilçe alanı çok geniş ("+tl.length+" parça)");
+    for(let i=0;i<tl.length;i++){ilerle(0.3+0.45*i/tl.length,`${ad}: yol ağı indiriliyor (${i+1}/${tl.length})…`);
+      const d=await fetchTile(tl[i][0],tl[i][1]);bayt+=JSON.stringify(d).length;await sleep(300);}
+    // 3) dusuk cozunurluklu uydu (EOX Sentinel-2, z10-14)
+    let uyduOk=0,uyduHata=0,uyduAtla=false;
+    try{const c=await caches.open("uydu-v1");
+      const liste=[];for(let z=10;z<=EOX_ZMAX;z++){const [x1,y1]=lonLat2tile(bb.maxLa,bb.minLo,z),[x2,y2]=lonLat2tile(bb.minLa,bb.maxLo,z);for(let x=x1;x<=x2;x++)for(let y=y1;y<=y2;y++)liste.push(EOX_URL.replace("{z}",z).replace("{x}",x).replace("{y}",y));}
+      if(liste.length>3500){uyduAtla=true;}
+      else{for(let i=0;i<liste.length;i++){if(i%20===0)ilerle(0.75+0.25*i/liste.length,`${ad}: uydu altlığı indiriliyor (${i+1}/${liste.length})…`);
+        const u=liste[i];if(await c.match(u)){uyduOk++;continue;}
+        try{const r=await fetch(u,{mode:"cors",signal:AbortSignal.timeout(20000)});if(r.ok){await c.put(u,r.clone());bayt+=+(r.headers.get("content-length")||25000);uyduOk++;}else uyduHata++;}
+        catch(err){uyduHata++;if(uyduHata>25&&uyduOk===0){uyduAtla=true;break;}}}}
+    }catch(err){uyduAtla=true;}
+    const m=(await idbGet("off-manifest"))||{};m[ad]={tarih:new Date().toLocaleDateString("tr-TR"),mb:+(bayt/1e6).toFixed(1),tiles:tl.map(t=>t.join(",")),uydu:uyduOk};await idbPut("off-manifest",m);
+    ilerle(1,`${ad} indirildi: ${cat.p.length} mahalle parseli, ${tl.length} yol ağı parçası, uydu altlığı ${uyduAtla?"alınamadı (internetli kullanımda normal uydu, çevrimdışında yol ağı görünümü)":uyduOk+" karo"}. Toplam ${(bayt/1e6).toFixed(1)} MB.`);
+    $("offMsg").className="msg ok";await offListe();
+  }catch(err){show($("offMsg"),"İndirme yarım kaldı: "+err.message+". Tekrar deneyin; inen kısımlar saklanır.","err");}
+  finally{offRunning=false;$("offBtn").disabled=false;}
+};
+veriBaslatSonra.push(()=>{fillOffIlce();offListe();});
+
 /* ---------- Diger ---------- */
 $("ilce").onchange=()=>{$("results").hidden=true;$("goRow").hidden=true;state.sonIlce=$("ilce").value||"";save();};
 $("pw").addEventListener("keydown",ev=>{if(ev.key==="Enter"){ev.preventDefault();$("pwBtn").click();}});
@@ -1295,6 +1363,7 @@ $("clearBtn").onclick=()=>{$("clearConfirm").hidden=false;};
 $("clearNo").onclick=()=>{$("clearConfirm").hidden=true;};
 $("clearYes").onclick=()=>{state.items=[];$("clearConfirm").hidden=true;needFit=true;save();render();};
 
+if("serviceWorker" in navigator){try{navigator.serviceWorker.register("sw.js").catch(()=>{});}catch(e){}}
 load();
 dedupe();
 console.log("Kayseri Parsel Rota sürüm "+SURUM);
