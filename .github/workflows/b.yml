@@ -1,0 +1,59 @@
+name: b
+on:
+  push:
+    branches: [yapim]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  b:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - name: araclar
+        run: |
+          mkdir -p logs
+          (sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool && pip install -q shapely pyproj numpy) 2>&1 | tail -5 | tee logs/1.log
+      - name: osm
+        run: |
+          set -o pipefail
+          mkdir -p w
+          (curl -sSL --retry 3 -o w/tr.osm.pbf https://download.geofabrik.de/europe/turkey-latest.osm.pbf && ls -la w/tr.osm.pbf \
+           && osmium extract -b 34.65,37.55,37.2,39.5 w/tr.osm.pbf -o w/k.osm.pbf --overwrite \
+           && osmium tags-filter w/k.osm.pbf w/highway -o w/kh.osm.pbf --overwrite \
+           && osmium export w/kh.osm.pbf -f geojsonseq -o w/osm.geojsonseq --geometry-types=linestring --overwrite \
+           && ls -la w && wc -l w/osm.geojsonseq && rm -f w/tr.osm.pbf) 2>&1 | tee logs/2.log
+      - name: uydu
+        run: |
+          set -o pipefail
+          (curl -sSL --retry 3 -o w/wa.zip https://usaminedroads.z19.web.core.windows.net/drops/2025.04.28/Western_Asia.zip && ls -la w/wa.zip \
+           && python3 -c "
+          import zipfile,sys
+          z=zipfile.ZipFile('w/wa.zip');print(z.namelist()[:10])
+          n=0
+          with open('w/tur.tsv','wb') as out:
+              for name in z.namelist():
+                  with z.open(name) as f:
+                      for line in f:
+                          if line.startswith(b'TUR\t'):
+                              out.write(line);n+=1
+          print('TUR satir',n)
+          " && rm -f w/wa.zip && ls -la w) 2>&1 | tee logs/3.log
+      - name: isle
+        run: |
+          set -o pipefail
+          python3 b/build.py w/osm.geojsonseq w/tur.tsv out 2>&1 | tee logs/4.log
+      - name: gonder
+        run: |
+          cd out
+          git init -q && git checkout -q -b yapim-cikti
+          git add -A && git -c user.name=b -c user.email=b@b commit -q -m c
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" yapim-cikti
+      - name: kayit
+        if: always()
+        run: |
+          mkdir -p lg && cp -r logs/* lg/ 2>/dev/null || true
+          cd lg && git init -q && git checkout -q -b yapim-log
+          git add -A && git -c user.name=b -c user.email=b@b commit -q -m l || true
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" yapim-log || true
