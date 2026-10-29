@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Kayseri Parsel Rota</title>
 <meta name="theme-color" content="#134A40">
-<meta name="version" content="r35">
+<meta name="version" content="r36">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
@@ -282,7 +282,7 @@ summary{cursor:pointer;font-weight:700}
 "use strict";
 const ILCELER_STATIK=["Akkışla","Bünyan","Develi","Felahiye","Hacılar","İncesu","Kocasinan","Melikgazi","Özvatan","Pınarbaşı","Sarıoğlan","Sarız","Talas","Tomarza","Yahyalı","Yeşilhisar"];
 const MERKEZ={lat:38.7205,lon:35.4826};
-const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", SURUM="r35 · 29.10.2026 16:00";
+const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", SURUM="r36 · 29.10.2026 16:15";
 const $=id=>document.getElementById(id);
 
 /* ---------- Giris kaydi (Google Formu) ---------- */
@@ -1001,7 +1001,7 @@ const YON=["kuzey","kuzeydoğu","doğu","güneydoğu","güney","güneybatı","ba
 function bearing(a,b){const r=Math.PI/180;const y=Math.sin((b.lon-a.lon)*r)*Math.cos(b.lat*r);const x=Math.cos(a.lat*r)*Math.sin(b.lat*r)-Math.sin(a.lat*r)*Math.cos(b.lat*r)*Math.cos((b.lon-a.lon)*r);return (Math.atan2(y,x)*180/Math.PI+360)%360;}
 const TILE=0.1;
 const live={map:null,lyr:null,tracks:null,routeLyr:null,me:null,acc:null,watch:null,p:null,wake:null,first:true,
-  graph:null,tiles:new Set(),stops:[],cur:0,legs:[],follow:true,voice:true,offCount:0,busy:false,said:{},arrived:false,lastHeading:null};
+  graph:null,tiles:new Set(),stops:[],cur:0,legs:[],legErr:[],legMsg:"",follow:true,voice:true,offCount:0,busy:false,said:{},arrived:false,lastHeading:null};
 function graphAdd(g,data){
   const add=(id,pt)=>{if(!g.nodes.has(id)){g.nodes.set(id,pt);g.adj.set(id,[]);}};
   (data.elements||[]).forEach(w=>{if(!w.geometry||!w.nodes||w.nodes.length!==w.geometry.length)return;
@@ -1034,8 +1034,8 @@ async function fetchTile(la,lo){
   const key="osmt@"+la+","+lo;let d=await idbGet(key);if(d)return d;
   if(!navigator.onLine)throw new Error("yol ağı için internet gerekli");
   const bb=[(la*TILE).toFixed(3),(lo*TILE).toFixed(3),((la+1)*TILE).toFixed(3),((lo+1)*TILE).toFixed(3)];
-  const q=`[out:json][timeout:60];way(${bb.join(",")})["highway"~"^(track|path|unclassified|tertiary|secondary|primary|trunk|residential|service|living_street|motorway|primary_link|secondary_link|trunk_link|motorway_link)$"];out geom;`;
-  const r=await fetch("https://overpass-api.de/api/interpreter",{method:"POST",body:"data="+encodeURIComponent(q),headers:{"Content-Type":"application/x-www-form-urlencoded"},signal:AbortSignal.timeout(60000)});
+  const q=`[out:json][timeout:80];way(${bb.join(",")})["highway"~"^(track|path|unclassified|tertiary|secondary|primary|trunk|residential|service|living_street|motorway|primary_link|secondary_link|trunk_link|motorway_link)$"];out geom;`;
+  const r=await fetch("https://overpass-api.de/api/interpreter",{method:"POST",body:"data="+encodeURIComponent(q),headers:{"Content-Type":"application/x-www-form-urlencoded"},signal:AbortSignal.timeout(90000)});
   if(!r.ok)throw new Error("yol ağı sunucusu "+r.status);
   const raw=await r.json();
   d={elements:(raw.elements||[]).map(w=>({nodes:w.nodes,geometry:w.geometry,t:(w.tags||{}).highway}))};
@@ -1070,7 +1070,7 @@ async function computeLeg(from,p,onProgress){ // from -> p (tek bacak)
 function finishLeg(pts,dk,head,tail){
   const cums=[0];let cum=0;
   for(let i=1;i<pts.length;i++){cum+=hav({lat:pts[i-1][0],lon:pts[i-1][1]},{lat:pts[i][0],lon:pts[i][1]})*1000;cums.push(cum);}
-  const offStart=tail>30?cum-tail:cum;
+  const offStart=tail>8?cum-tail:cum;
   const man=[];
   for(let i=1;i<pts.length-1;i++){const d1=cums[i]-cums[i-1],d2=cums[i+1]-cums[i];if(d1<12||d2<12)continue;
     if(cums[i]>=offStart-1)break;
@@ -1080,6 +1080,7 @@ function finishLeg(pts,dk,head,tail){
     if(man.length&&cums[i]-man[man.length-1].at<25)continue;
     man.push({at:cums[i],txt});}
   if(tail>30)man.push({at:offStart,txt:`araç yolu bitiyor, parsele ${fmtInt(tail)} m yürüyün`,off:true});
+  else if(tail>8)man.push({at:offStart,txt:`parsel ${fmtInt(tail)} m içeride`,off:true});
   return {pts,cums,total:cum,dk,man,head:head||0,tail:tail||0,offStart};
 }
 function projectOnRoute(m,route){
@@ -1108,7 +1109,7 @@ function liveInit(){
 function followUI(){$("liveFollow").textContent="Takip: "+(live.follow?"açık":"kapalı");}
 function voiceUI(){$("liveVoice").textContent="Ses: "+(live.voice?"açık":"kapalı");}
 function drawLeg(leg,style){
-  const n=leg.pts.length;const hasHead=leg.head>30&&n>2,hasTail=leg.tail>30&&n>2;
+  const n=leg.pts.length;const hasHead=leg.head>30&&n>2,hasTail=leg.tail>8&&n>2;
   const mid=leg.pts.slice(hasHead?1:0,hasTail?n-1:n);
   if(mid.length>1){L.polyline(mid,{color:"#FFFFFF",weight:8,opacity:style==="cur"?.7:.4}).addTo(live.routeLyr);L.polyline(mid,{color:"#A23A2C",weight:style==="cur"?4:3,opacity:style==="cur"?1:.7}).addTo(live.routeLyr);}
   const dash=pts=>{L.polyline(pts,{color:"#000",weight:6,opacity:.35}).addTo(live.routeLyr);L.polyline(pts,{color:"#FFFFFF",weight:3,dashArray:"6 8",opacity:1}).addTo(live.routeLyr);};
@@ -1128,7 +1129,7 @@ function drawAllLegs(){
 function liveOpen(p){liveStart([p]);}
 function liveStart(stops){
   liveInit();if(!live.map||!stops.length)return;
-  Object.assign(live,{stops,cur:0,legs:new Array(stops.length).fill(null),p:stops[0],first:true,offCount:0,busy:false,said:{},arrived:false,follow:true});
+  Object.assign(live,{stops,cur:0,legs:new Array(stops.length).fill(null),legErr:new Array(stops.length).fill(""),legMsg:"",p:stops[0],first:true,offCount:0,busy:false,said:{},arrived:false,follow:true});
   if(live.tracks)live.tracks.clearLayers();live.tiles=new Set();live.graph=null;live.routeLyr.clearLayers();
   $("live").hidden=false;$("liveInfo").textContent="GPS bekleniyor…";$("liveInfo").className="info";$("liveSub").textContent="";$("liveNext").hidden=true;followUI();voiceUI();liveTitle();
   setTimeout(()=>live.map.invalidateSize(),50);
@@ -1157,8 +1158,16 @@ async function liveRecalc(all){
     if(live.first){live.first=false;live.map.fitBounds(live.legs[cur].pts,{padding:[40,40],maxZoom:17});}
     const t=live.legs[cur].total;konus(`${st.length>1?harf(cur)+" durağına ":""}rota hazır, ${t>=1000?fmt(t/1000)+" kilometre":fmtInt(t)+" metre"}.`);
     liveTick();
-    if(all!==false){for(let i=cur+1;i<st.length;i++){if(live.stops!==st)return;if(live.legs[i])continue;
-        try{live.legs[i]=await computeLeg(st[i-1],st[i],null);drawAllLegs();}catch(e){live.legs[i]=null;}}}
+    if(all!==false){
+      for(let tur=0;tur<2;tur++){
+        for(let i=cur+1;i<st.length;i++){if(live.stops!==st)return;if(live.legs[i])continue;
+          live.legMsg=`${harf(i-1)}→${harf(i)} rotası hesaplanıyor…`;liveTick();
+          try{live.legs[i]=await computeLeg(st[i-1],st[i],null);live.legErr[i]="";drawAllLegs();}
+          catch(e){live.legs[i]=null;live.legErr[i]=e.message;await sleep(4000);}}
+        if(!live.legs.some((l,i)=>i>cur&&!l))break;
+      }
+      live.legMsg="";liveTick();
+    }
   }catch(e){live.legs[cur]=null;$("liveSub").textContent="Rota alınamadı: "+e.message+". Düz çizgiyi izleyin.";}
   finally{live.busy=false;liveTick();}
 }
@@ -1197,7 +1206,8 @@ function liveTick(acc){
     if(d<=220&&d>60&&!live.said[k1]){live.said[k1]=1;konus(`${Math.round(d/10)*10} metre sonra ${next.txt}.`);}
     else if(d<=60&&!live.said[k2]){live.said[k2]=1;konus(next.txt+".");}}
   else{yon=`${fmtInt(kalan)} m düz devam, parsel ileride`;}
-  $("liveSub").textContent=yon+(cok&&top>kalan+1?` · tüm duraklar ${fmt(top/1000)} km`:"")+(pr.dist>40?` · rotaya ${fmtInt(pr.dist)} m`:"")+` · GPS ±${fmtInt(acc||0)} m`;
+  const eksik=live.legs.map((l,i)=>(!l&&i>live.cur&&live.legErr[i])?`${harf(i-1)}→${harf(i)} alınamadı (${live.legErr[i]})`:"").filter(Boolean);
+  $("liveSub").textContent=yon+(cok&&top>kalan+1?` · tüm duraklar ${fmt(top/1000)} km`:"")+(live.legMsg?` · ${live.legMsg}`:"")+(eksik.length?" · "+eksik.join("; "):"")+(pr.dist>40?` · rotaya ${fmtInt(pr.dist)} m`:"")+` · GPS ±${fmtInt(acc||0)} m`;
 }
 function liveNextStop(){
   const p=live.p;if(!p)return;p.done=true;save();render();
