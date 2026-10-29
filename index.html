@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Kayseri Parsel Rota</title>
 <meta name="theme-color" content="#134A40">
-<meta name="version" content="r31">
+<meta name="version" content="r32">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
@@ -277,7 +277,7 @@ summary{cursor:pointer;font-weight:700}
 "use strict";
 const ILCELER_STATIK=["Akkışla","Bünyan","Develi","Felahiye","Hacılar","İncesu","Kocasinan","Melikgazi","Özvatan","Pınarbaşı","Sarıoğlan","Sarız","Talas","Tomarza","Yahyalı","Yeşilhisar"];
 const MERKEZ={lat:38.7205,lon:35.4826};
-const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", SURUM="r31 · 29.10.2026 14:00";
+const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", SURUM="r32 · 29.10.2026 14:50";
 const $=id=>document.getElementById(id);
 
 /* ---------- Giris kaydi (Google Formu) ---------- */
@@ -1015,17 +1015,47 @@ function dijkstra(g,src,dst){
   const path=[];let u=dst;while(u!==undefined){path.push(u);u=prev.get(u);}path.reverse();
   return {ids:path,m:dist.get(dst)};
 }
-function livePath(){
-  const p=live.p,g=live.graph;if(!p||!g||!me)return;
-  const a=nearestNode(g,me),b=nearestNode(g,p);if(!a||!b)return;
-  const r=dijkstra(g,a.id,b.id);
-  if(live.path){live.path.remove();live.path=null;}
-  if(!r){$("liveSub").textContent="Yol ağında bağlantı bulunamadı; düz çizgiyi izleyin.";return;}
-  const pts=[[me.lat,me.lon]].concat(r.ids.map(id=>{const q=g.nodes.get(id);return [q.lat,q.lon];}),[[p.lat,p.lon]]);
-  live.path=L.polyline(pts,{color:"#00E5FF",weight:5,opacity:.95}).addTo(live.map);
-  const toplam=a.m+r.m+b.m;
-  $("liveSub").textContent=`Tarla yolu güzergahı: ${toplam>=1000?fmt(toplam/1000)+" km":fmtInt(toplam)+" m"} (mavi çizgi)${b.m>60?` · yol parsele ${fmtInt(b.m)} m kala bitiyor`:""}`;
+const liveRoad={line:null,km:null,dk:null,at:null,busy:false,layer:null,err:""};
+function trackPath(from,p){ // OSM agi uzerinden from -> parsel (parsel cevresi yuklu olmali)
+  const g=live.graph;if(!g)return null;
+  const a=nearestNode(g,from),b=nearestNode(g,p);if(!a||!b||a.m>1500)return null;
+  const r=dijkstra(g,a.id,b.id);if(!r)return null;
+  return {pts:[[from.lat,from.lon]].concat(r.ids.map(id=>{const q=g.nodes.get(id);return [q.lat,q.lon];}),[[p.lat,p.lon]]),m:a.m+r.m+b.m,son:b.m};
 }
+function liveDraw(){
+  const p=live.p;if(!p||!me)return;
+  if(live.path){live.path.remove();live.path=null;}
+  if(liveRoad.layer){liveRoad.layer.remove();liveRoad.layer=null;}
+  const dPar=hav(me,p)*1000;
+  const yakin=live.graph&&dPar<2300;
+  const parts=[];
+  if(yakin){
+    const t=trackPath(me,p);
+    if(t){live.path=L.polyline(t.pts,{color:"#00E5FF",weight:5,opacity:.95}).addTo(live.map);parts.push(`tarla yolu ${t.m>=1000?fmt(t.m/1000)+" km":fmtInt(t.m)+" m"}${t.son>60?` (parsele ${fmtInt(t.son)} m kala biter)`:""}`);}
+    else parts.push(live.graph?"yol ağında bağlantı yok; düz çizgiyi izleyin":"tarla yolu verisi yok");
+  }else{
+    if(liveRoad.line){liveRoad.layer=L.polyline(liveRoad.line,{color:"#A23A2C",weight:5,opacity:.95}).addTo(live.map);parts.push(`araç yolu ${fmt(liveRoad.km)} km · ${fmtInt(liveRoad.dk)} dk`);}
+    else parts.push(liveRoad.busy?"araç yolu hesaplanıyor…":(liveRoad.err?"araç yolu alınamadı":"araç yolu bekleniyor"));
+    const giris=p.yol||p;
+    const t=live.graph?trackPath(giris,p):null;
+    if(t){live.path=L.polyline(t.pts,{color:"#00E5FF",weight:5,opacity:.95}).addTo(live.map);parts.push(`sonra tarla yolu ${fmtInt(t.m)} m`);}
+    else if(p.yol&&p.yol.m>30)parts.push(`sonra parsele ${fmtInt(p.yol.m)} m`);
+  }
+  $("liveSub").textContent=parts.join(" · ")+` · GPS ±${fmtInt(live.acc?live.acc.getRadius():0)} m`;
+}
+async function liveRoute(){
+  const p=live.p;if(!p||!me)return;
+  const dPar=hav(me,p)*1000;
+  if(live.graph&&dPar<2300){liveDraw();return;}
+  if(!liveRoad.busy&&(!liveRoad.at||hav(liveRoad.at,me)*1000>300)){
+    liveRoad.busy=true;liveRoad.at={lat:me.lat,lon:me.lon};liveRoad.err="";liveDraw();
+    try{const r=await osrmRoute([me,p.yol||p]);if(live.p===p){liveRoad.line=r.line;liveRoad.km=r.km;liveRoad.dk=r.dk;}}
+    catch(e){liveRoad.line=null;liveRoad.err=e.message;}
+    finally{liveRoad.busy=false;}
+  }
+  liveDraw();
+}
+function livePath(){liveDraw();}
 function liveInit(){
   if(live.map||typeof L==="undefined")return;
   live.map=L.map("liveMap",{zoomControl:false}).setView([MERKEZ.lat,MERKEZ.lon],13);
@@ -1036,7 +1066,7 @@ function liveInit(){
 }
 function liveOpen(p){
   liveInit();if(!live.map)return;
-  live.p=p;live.first=true;live.graph=null;live.lastCalc=null;if(live.path){live.path.remove();live.path=null;}live.tracks&&live.tracks.clearLayers();live.tracksKey=null;$("live").hidden=false;$("liveTitle").textContent=label(p);$("liveInfo").textContent="GPS bekleniyor…";$("liveSub").textContent="";
+  live.p=p;live.first=true;live.graph=null;live.lastCalc=null;if(live.path){live.path.remove();live.path=null;}if(liveRoad.layer){liveRoad.layer.remove();liveRoad.layer=null;}Object.assign(liveRoad,{line:null,km:null,dk:null,at:null,busy:false,err:""});live.tracks&&live.tracks.clearLayers();live.tracksKey=null;$("live").hidden=false;$("liveTitle").textContent=label(p);$("liveInfo").textContent="GPS bekleniyor…";$("liveSub").textContent="";
   $("liveGo").href=dirUrl([p],true);
   setTimeout(()=>live.map.invalidateSize(),50);
   live.lyr.clearLayers();
@@ -1064,10 +1094,8 @@ function liveUpdate(pos){
   else{live.me.setLatLng([m.lat,m.lon]);live.acc.setLatLng([m.lat,m.lon]).setRadius(pos.coords.accuracy||0);live.line.setLatLngs([[m.lat,m.lon],[p.lat,p.lon]]);}
   const d=hav(m,p)*1000,br=bearing(m,p);
   $("liveInfo").textContent=(d>=1000?fmt(d/1000)+" km":fmtInt(d)+" m")+" · "+YON[Math.round(br/45)%8];
-  if(!live.graph){const dy=p.yol?hav(m,p.yol)*1000:null;
-    $("liveSub").textContent=(dy!=null?`yol noktasına ${dy>=1000?fmt(dy/1000)+" km":fmtInt(dy)+" m"} · `:"")+`GPS ±${fmtInt(pos.coords.accuracy||0)} m`;}
   if(live.first){live.first=false;live.map.fitBounds([[m.lat,m.lon],[p.lat,p.lon]],{padding:[40,40],maxZoom:17});}
-  if(live.graph&&(!live.lastCalc||hav(live.lastCalc,m)*1000>25)){live.lastCalc=m;livePath();}
+  if(!live.lastCalc||hav(live.lastCalc,m)*1000>25){live.lastCalc=m;liveRoute();}
 }
 async function loadTracks(p,bildir){
   const key="osm@"+p.lat.toFixed(3)+","+p.lon.toFixed(3);
@@ -1082,7 +1110,7 @@ async function loadTracks(p,bildir){
     catch(e){if(bildir)$("liveSub").textContent="Tarla yolları alınamadı: "+e.message;return;}
   }
   live.tracks.clearLayers();live.tracksKey=key;let n=0;
-  live.graph=buildGraph(data);live.lastCalc=null;if(me)livePath();
+  live.graph=buildGraph(data);live.lastCalc=null;if(me)liveDraw();
   (data.elements||[]).forEach(w=>{if(!w.geometry)return;const t=(w.tags||{}).highway;const pts=w.geometry.map(g=>[g.lat,g.lon]);
     const iz=t==="track"||t==="path";
     L.polyline(pts,{color:iz?"#FFD54F":"#FFFFFF",weight:iz?3:2,dashArray:iz?"8 6":null,opacity:.9}).addTo(live.tracks).bindPopup(iz?"Tarla yolu (OpenStreetMap)":"Yol (OpenStreetMap)");n++;});
