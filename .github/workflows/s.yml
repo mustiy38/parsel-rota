@@ -1,0 +1,41 @@
+name: s
+on:
+  push:
+    branches: [su]
+permissions:
+  contents: write
+jobs:
+  s:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: araclar
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool
+      - name: su
+        run: |
+          set -o pipefail
+          mkdir -p w out
+          curl -sSL --retry 3 -o w/tr.osm.pbf https://download.geofabrik.de/europe/turkey-latest.osm.pbf
+          osmium extract -b 34.65,37.55,37.2,39.5 w/tr.osm.pbf -o w/k.osm.pbf --overwrite
+          osmium tags-filter w/k.osm.pbf w/waterway=river,stream,brook,wadi,canal,ditch,drain -o w/ks.osm.pbf --overwrite
+          osmium export w/ks.osm.pbf -f geojsonseq -o w/su.geojsonseq --geometry-types=linestring --overwrite
+          wc -l w/su.geojsonseq
+          python3 -c "
+          import json
+          n=0
+          with open('w/su.geojsonseq') as f, open('out/su.tsv','w') as o:
+              for line in f:
+                  line=line.strip().lstrip('\x1e')
+                  if not line: continue
+                  g=json.loads(line); t=(g.get('properties') or {}).get('waterway','')
+                  c=g['geometry']['coordinates']
+                  o.write(t+'\t'+';'.join(f'{x:.6f},{y:.6f}' for x,y in c)+'\n'); n+=1
+          print('su cizgisi',n)
+          "
+          gzip -9 out/su.tsv && ls -la out
+      - name: gonder
+        run: |
+          cd out
+          git init -q && git checkout -q -b su-cikti
+          git add -A && git -c user.name=b -c user.email=b@b commit -q -m c
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" su-cikti
