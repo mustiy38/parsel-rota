@@ -1,0 +1,14 @@
+toplam il/ilce cokgeni 1109
+il adaylari [('Kayseri', 154451)]
+ilce 16 ['Akkışla', 'Bünyan', 'Develi', 'Felahiye', 'Hacılar', 'Kocasinan', 'Melikgazi', 'Pınarbaşı', 'Sarıoğlan', 'Sarız', 'Talas', 'Tomarza', 'Yahyalı', 'Yeşilhisar', 'Özvatan', 'İncesu']
+admin_level 7 7 {'Akkışla': 1, 'Felahiye': 2, 'Sarıoğlan': 1, 'Özvatan': 1, 'İncesu': 2}
+admin_level 8 783 {'Akkışla': 15, 'Bünyan': 46, 'Develi': 78, 'Felahiye': 17, 'Hacılar': 12, 'Kocasinan': 117, 'Melikgazi': 86, 'Pınarbaşı': 130, 'Sarıoğlan': 28, 'Sarız': 46, 'Talas': 34, 'Tomarza': 54, 'Yahyalı': 42, 'Yeşilhisar': 35, 'Özvatan': 13, 'İncesu': 30}
+admin_level 9 0 {}
+admin_level 10 0 {}
+total 2640
+drwxr-xr-x 2 runner runner    4096 Oct 30 19:55 .
+drwxr-xr-x 5 runner runner    4096 Oct 30 19:53 ..
+-rw-r--r-- 1 runner runner   46262 Oct 30 19:55 a7.geojson.gz
+-rw-r--r-- 1 runner runner 2180629 Oct 30 19:55 a8.geojson.gz
+-rw-r--r-- 1 runner runner  110369 Oct 30 19:55 il.geojson.gz
+-rw-r--r-- 1 runner runner  350393 Oct 30 19:55 ilce.geojson.gz
