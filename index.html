@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Kayseri Parsel Rota</title>
 <meta name="theme-color" content="#134A40">
-<meta name="version" content="r51">
+<meta name="version" content="r52">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
@@ -327,7 +327,7 @@ summary{cursor:pointer;font-weight:700}
 "use strict";
 const ILCELER_STATIK=["Akkışla","Bünyan","Develi","Felahiye","Hacılar","İncesu","Kocasinan","Melikgazi","Özvatan","Pınarbaşı","Sarıoğlan","Sarız","Talas","Tomarza","Yahyalı","Yeşilhisar"];
 const MERKEZ={lat:38.7205,lon:35.4826};
-const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", LSKEY="kpr-v3", SURUM="r51 · 30.10.2026 23:40";
+const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", LSKEY="kpr-v3", SURUM="r52 · 30.10.2026 23:55";
 const $=id=>document.getElementById(id);
 
 /* ---------- Giris kaydi (Google Formu) ---------- */
@@ -2122,10 +2122,12 @@ async function sinirlariGetir(){ // listedeki parsellerin sinirlari (bir kez bul
 }
 const SNR_RENK="#FFFFFF"; // beyaz, altinda koyu golge
 const SNR_STIL=p=>({color:p.done?"#7A8A86":SNR_RENK,weight:3,fillColor:p.done?"#7A8A86":SNR_RENK,fillOpacity:.1,bubblingMouseEvents:false});
-function snrCiz(p,lyr){ // koyu golge + beyaz sinir; dokununca bilgi ekrani
+const BILGI_ZOOM=14; // parsel bilgi ekrani bu yakinliktan itibaren acilir (ekranda yaklasik 2-3 km); uzaktayken dokunma yok sayilir
+function snrCiz(p,lyr){ // koyu golge + beyaz sinir; yakinken dokununca bilgi ekrani
   const h=p.halkalar||p.ring;
   L.polygon(h,{color:"#000",weight:6,opacity:.35,fill:false,interactive:false}).addTo(lyr);
-  L.polygon(h,SNR_STIL(p)).bindPopup(()=>parselBilgi(p,listeDurumu(p)),{maxWidth:260}).addTo(lyr);
+  L.polygon(h,SNR_STIL(p)).on("click",ev=>{const m=ev.target._map;if(!m||m.getZoom()<BILGI_ZOOM)return;
+    L.popup({maxWidth:260}).setLatLng(ev.latlng).setContent(parselBilgi(p,listeDurumu(p))).openOn(m);}).addTo(lyr);
 }
 function parselBilgi(p,ek){ // bilgi ekrani: ilce/mahalle, ada/parsel, tapu alani ve niteligi
   const d=document.createElement("div");d.className="pbilgi";
@@ -2137,6 +2139,7 @@ function parselBilgi(p,ek){ // bilgi ekrani: ilce/mahalle, ada/parsel, tapu alan
 function listeDurumu(p){const e=document.createElement("div");e.className="pdurum";const s=active().indexOf(p)+1;e.textContent=p.done?"Listede · gidildi":(s?`Listede · sıra ${s}`:"Listede");return e;}
 function snrSecimKatman(m){if(!m._snrSecim){m._snrSecim=L.layerGroup().addTo(m);m.on("popupclose",()=>m._snrSecim.clearLayers());}return m._snrSecim;}
 async function haritaDokun(m,e){ // haritada dokunulan noktadaki parselin bilgisi (kilitliyse yalniz uyari)
+  if(m.getZoom()<BILGI_ZOOM)return; // uzak gorunumde dokunma yok sayilir
   if(!kilitAcik()){L.popup({maxWidth:240}).setLatLng(e.latlng).setContent(kilitPopup()).openOn(m);return;}
   const la=e.latlng.lat,lo=e.latlng.lng;
   let r;try{r=await snrNokta(la,lo);}catch(err){return;}
