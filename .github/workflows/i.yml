@@ -25,14 +25,16 @@ jobs:
           python3 - <<'PY' 2>&1 | tee logs/3.log
           import json, gzip
           from shapely.geometry import shape, mapping
-          feats=[]
+          feats=[];feats2={}
           with open('w/adm.geojsonseq') as f:
               for line in f:
                   line=line.strip().lstrip('\x1e')
                   if not line: continue
                   g=json.loads(line); p=g.get('properties') or {}
-                  if p.get('boundary')!='administrative' or p.get('admin_level') not in ('4','6'): continue
-                  feats.append((p,g['geometry']))
+                  if p.get('boundary')!='administrative': continue
+                  lv=p.get('admin_level')
+                  if lv in ('4','6'): feats.append((p,g['geometry']))
+                  elif lv in ('7','8','9','10'): feats2.setdefault(lv,[]).append((p,g['geometry']))
           print('toplam il/ilce cokgeni', len(feats))
           il=[(p,shape(geo)) for p,geo in feats if p.get('admin_level')=='4' and (p.get('name') or '').startswith('Kayseri')]
           print('il adaylari', [(p.get('name'), p.get('@id')) for p,_ in il])
@@ -46,6 +48,21 @@ jobs:
               if K.contains(s.representative_point()):
                   out.append({'type':'Feature','properties':{k:p.get(k) for k in ('name','name:tr','@id','@type','wikidata','ref')},'geometry':mapping(s)})
           print('ilce', len(out), sorted(f['properties']['name'] for f in out))
+          IL=[(f['properties']['name'],shape(f['geometry'])) for f in out]
+          for lvl in ('7','8','9','10'):
+              ms=[]
+              for p,geo in feats2.get(lvl,[]):
+                  s=shape(geo)
+                  if not s.is_valid: s=s.buffer(0)
+                  rp=s.representative_point()
+                  if not K.contains(rp): continue
+                  ilce=next((a for a,g in IL if g.contains(rp)),'')
+                  ms.append({'type':'Feature','properties':{'name':p.get('name'),'ilce':ilce,'@id':p.get('@id'),'@type':p.get('@type'),'place':p.get('place'),'ref':p.get('ref')},'geometry':mapping(s)})
+              say={}
+              for m in ms: say[m['properties']['ilce']]=say.get(m['properties']['ilce'],0)+1
+              print('admin_level',lvl,len(ms),dict(sorted(say.items())))
+              if ms:
+                  with gzip.open(f'out/a{lvl}.geojson.gz','wt',encoding='utf-8') as o: json.dump({'type':'FeatureCollection','features':ms}, o, ensure_ascii=False)
           with gzip.open('out/ilce.geojson.gz','wt',encoding='utf-8') as o: json.dump({'type':'FeatureCollection','features':out}, o, ensure_ascii=False)
           with gzip.open('out/il.geojson.gz','wt',encoding='utf-8') as o: json.dump({'type':'Feature','properties':{k:il[0][0].get(k) for k in ('name','@id')},'geometry':mapping(K)}, o, ensure_ascii=False)
           PY
