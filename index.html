@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Kayseri Parsel Rota</title>
 <meta name="theme-color" content="#134A40">
-<meta name="version" content="r52">
+<meta name="version" content="r53">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
@@ -327,7 +327,7 @@ summary{cursor:pointer;font-weight:700}
 "use strict";
 const ILCELER_STATIK=["Akkışla","Bünyan","Develi","Felahiye","Hacılar","İncesu","Kocasinan","Melikgazi","Özvatan","Pınarbaşı","Sarıoğlan","Sarız","Talas","Tomarza","Yahyalı","Yeşilhisar"];
 const MERKEZ={lat:38.7205,lon:35.4826};
-const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", LSKEY="kpr-v3", SURUM="r52 · 30.10.2026 23:55";
+const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", LSKEY="kpr-v3", SURUM="r53 · 31.10.2026 00:25";
 const $=id=>document.getElementById(id);
 
 /* ---------- Giris kaydi (Google Formu) ---------- */
@@ -724,6 +724,26 @@ function startPoint(){
 
 /* ---------- Harita kaynak bilgisi: lisans geregi acilista 5 sn tam metin, sonra kucuk "Esri ⓘ" dugmesi ---------- */
 const ESRI_ATIF="Powered by Esri · Kaynak: Esri, Maxar, Earthstar Geographics";
+/* Uydu katmani: kirsalda en yakin seviyede Esri goruntusu yok ("Map data not yet available").
+   En yakin seviye 18'den buyutulur; o seviyede de karo yoksa sunucu 404 doner (blankTile=false)
+   ve bir ust seviyenin karosu buyutulup kirpilarak ayni yere konur. */
+const ESRI_URL="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}?blankTile=false", UYDU_NATIVE=18;
+let UyduKatman=null;
+function uyduKatmani(){
+  if(!UyduKatman)UyduKatman=L.TileLayer.extend({
+    createTile(c,done){const t=L.TileLayer.prototype.createTile.call(this,c,done);t._asil={x:c.x,y:c.y,z:c.z};return t;},
+    _tileOnError(done,tile,e){
+      const a=tile._asil,k=(tile._geri||0)+1;
+      if(!a||k>4||a.z-k<3)return L.TileLayer.prototype._tileOnError.call(this,done,tile,e);
+      tile._geri=k;
+      const s=1<<k,ts=this.getTileSize().x,px=a.x>>k,py=a.y>>k,sol=(a.x-px*s)*ts,ust=(a.y-py*s)*ts,W=ts*s,st=tile.style;
+      st.width=st.height=W+"px";st.marginLeft=-sol+"px";st.marginTop=-ust+"px";
+      st.clipPath=`inset(${ust}px ${W-sol-ts}px ${W-ust-ts}px ${sol}px)`;
+      tile.src=ESRI_URL.replace("{z}",a.z-k).replace("{y}",py).replace("{x}",px);
+    }
+  });
+  return new UyduKatman(ESRI_URL,{maxZoom:19,maxNativeZoom:UYDU_NATIVE,attribution:ESRI_ATIF});
+}
 function atifKur(m,katmanlar){ // katmanlar: [[katman,"kisa ad"],...]
   m.attributionControl.setPrefix(false);m.attributionControl.setPosition("bottomleft");m.attributionControl.addAttribution(RN_ATIF);
   const C=L.Control.extend({options:{position:"bottomleft"},onAdd:function(){
@@ -743,7 +763,7 @@ function initMap(){
   if(typeof L==="undefined"){$("map").textContent="Harita kütüphanesi yüklenemedi.";return;}
   map=L.map("map",{zoomControl:true,dragging:!COARSE}).setView([MERKEZ.lat,MERKEZ.lon],9);
   const osm=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"});
-  const sat=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,attribution:ESRI_ATIF});
+  const sat=uyduKatmani();
   sat.addTo(map);atifKur(map,[[sat,"Esri"],[osm,"© OSM"]]);
   L.control.layers({"Uydu":sat,"Harita":osm},null,{position:"topright"}).addTo(map);
   const FS=L.Control.extend({onAdd:function(){const b=L.DomUtil.create("button","fs-btn");b.type="button";b.id="fsBtn";b.title="Tam ekran";b.setAttribute("aria-label","Tam ekran");b.textContent="⛶";L.DomEvent.disableClickPropagation(b);L.DomEvent.on(b,"click",toggleFS);return b;}});
@@ -1809,7 +1829,7 @@ async function drawSave(){
 function liveInit(){
   if(live.map||typeof L==="undefined")return;
   live.map=L.map("liveMap",{zoomControl:false,preferCanvas:true}).setView([MERKEZ.lat,MERKEZ.lon],13);
-  const sat=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,attribution:ESRI_ATIF});
+  const sat=uyduKatmani();
   const osm=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"});
   const eox=L.tileLayer(EOX_URL,{maxZoom:19,maxNativeZoom:EOX_ZMAX,attribution:"Sentinel-2 cloudless · EOX (CC BY-NC-SA)"});
   const bos=L.tileLayer("",{attribution:""});
