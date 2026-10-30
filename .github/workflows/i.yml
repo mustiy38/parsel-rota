@@ -1,0 +1,66 @@
+name: i
+on:
+  push:
+    branches: [il]
+permissions:
+  contents: write
+jobs:
+  i:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: araclar
+        run: |
+          mkdir -p logs
+          (sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool && pip install -q shapely) 2>&1 | tail -3 | tee logs/1.log
+      - name: sinir
+        run: |
+          set -o pipefail
+          mkdir -p w out
+          (curl -sSL --retry 3 -o w/tr.osm.pbf https://download.geofabrik.de/europe/turkey-latest.osm.pbf && ls -la w/tr.osm.pbf \
+           && osmium fileinfo -g header.option.osmosis_replication_timestamp w/tr.osm.pbf \
+           && osmium tags-filter w/tr.osm.pbf r/boundary=administrative -o w/adm.osm.pbf --overwrite \
+           && osmium export w/adm.osm.pbf -f geojsonseq -a type,id -o w/adm.geojsonseq --geometry-types=polygon --overwrite \
+           && wc -l w/adm.geojsonseq) 2>&1 | tee logs/2.log
+          python3 - <<'PY' 2>&1 | tee logs/3.log
+          import json, gzip
+          from shapely.geometry import shape, mapping
+          feats=[]
+          with open('w/adm.geojsonseq') as f:
+              for line in f:
+                  line=line.strip().lstrip('\x1e')
+                  if not line: continue
+                  g=json.loads(line); p=g.get('properties') or {}
+                  if p.get('boundary')!='administrative' or p.get('admin_level') not in ('4','6'): continue
+                  feats.append((p,g['geometry']))
+          print('toplam il/ilce cokgeni', len(feats))
+          il=[(p,shape(geo)) for p,geo in feats if p.get('admin_level')=='4' and (p.get('name') or '').startswith('Kayseri')]
+          print('il adaylari', [(p.get('name'), p.get('@id')) for p,_ in il])
+          K=il[0][1]
+          if not K.is_valid: K=K.buffer(0)
+          out=[]
+          for p,geo in feats:
+              if p.get('admin_level')!='6': continue
+              s=shape(geo)
+              if not s.is_valid: s=s.buffer(0)
+              if K.contains(s.representative_point()):
+                  out.append({'type':'Feature','properties':{k:p.get(k) for k in ('name','name:tr','@id','@type','wikidata','ref')},'geometry':mapping(s)})
+          print('ilce', len(out), sorted(f['properties']['name'] for f in out))
+          with gzip.open('out/ilce.geojson.gz','wt',encoding='utf-8') as o: json.dump({'type':'FeatureCollection','features':out}, o, ensure_ascii=False)
+          with gzip.open('out/il.geojson.gz','wt',encoding='utf-8') as o: json.dump({'type':'Feature','properties':{k:il[0][0].get(k) for k in ('name','@id')},'geometry':mapping(K)}, o, ensure_ascii=False)
+          PY
+          ls -la out | tee -a logs/3.log
+      - name: gonder
+        run: |
+          cp logs/*.log out/ || true
+          cd out
+          git init -q && git checkout -q -b il-cikti
+          git add -A && git -c user.name=b -c user.email=b@b commit -q -m c
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" il-cikti
+      - name: kayit
+        if: always()
+        run: |
+          mkdir -p lg && cp -r logs/* lg/ 2>/dev/null || true
+          cd lg && git init -q && git checkout -q -b il-log
+          git add -A && git -c user.name=b -c user.email=b@b commit -q -m l || true
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" il-log || true
