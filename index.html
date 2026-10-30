@@ -307,7 +307,7 @@ summary{cursor:pointer;font-weight:700}
 "use strict";
 const ILCELER_STATIK=["Akkışla","Bünyan","Develi","Felahiye","Hacılar","İncesu","Kocasinan","Melikgazi","Özvatan","Pınarbaşı","Sarıoğlan","Sarız","Talas","Tomarza","Yahyalı","Yeşilhisar"];
 const MERKEZ={lat:38.7205,lon:35.4826};
-const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", SURUM="r46 · 30.10.2026 19:50";
+const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", SURUM="r47 · 30.10.2026 19:55";
 const $=id=>document.getElementById(id);
 
 /* ---------- Giris kaydi (Google Formu) ---------- */
@@ -341,6 +341,7 @@ function num(v){if(v==null||v==="")return null;if(typeof v==="number")return isF
   const n=parseFloat(s);return isFinite(n)?n:null;}
 const fmt=n=>n.toLocaleString("tr-TR",{maximumFractionDigits:1});
 const fmtInt=n=>Math.round(n).toLocaleString("tr-TR");
+const fmtDa=m2=>(m2/1000).toLocaleString("tr-TR",{minimumFractionDigits:2,maximumFractionDigits:2})+" da"; // dekar, virgulden sonra iki basamak
 const baslik=s=>String(s||"").split(" ").map(w=>w?w[0].toLocaleUpperCase("tr-TR")+w.slice(1).toLocaleLowerCase("tr-TR"):w).join(" ");
 function hav(p,q){const R=6371,r=Math.PI/180;const dl=(q.lat-p.lat)*r,dn=(q.lon-p.lon)*r;const x=Math.sin(dl/2)**2+Math.cos(p.lat*r)*Math.cos(q.lat*r)*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(x));}
 const hasPos=p=>typeof p.lat==="number"&&typeof p.lon==="number"&&isFinite(p.lat)&&isFinite(p.lon);
@@ -669,7 +670,7 @@ function drawMap(act,sp){
     if(p.ring&&p.ring.length>2){snrCiz(p,parcelLayer);p.ring.forEach(q=>bounds.push(q));}
     const ic=L.divIcon({className:"",html:`<div class="num-icon${p.done?" done":""}">${p.done?"✓":(idx>=0?idx+1:"·")}</div>`,iconSize:[26,26],iconAnchor:[13,13]});
     const mk=L.marker([p.lat,p.lon],{icon:ic}).addTo(parcelLayer);
-    mk.bindPopup(`<b>${esc(label(p))}</b><br>${p.alan?fmt(p.alan/1000)+" da":""} ${esc(p.nitelik||"")}<br><a href="${dirUrl([p])}" target="_blank" rel="noopener">Yol tarifi</a>`);
+    mk.bindPopup(`<b>${esc(label(p))}</b><br>${p.alan?fmtDa(p.alan):""} ${esc(p.nitelik||"")}<br><a href="${dirUrl([p])}" target="_blank" rel="noopener">Yol tarifi</a>`);
     bounds.push([p.lat,p.lon]);
   });
   if(sp){L.circleMarker([sp.lat,sp.lon],{radius:7,color:"#A23A2C",fillColor:"#A23A2C",fillOpacity:.9}).addTo(routeLayer);bounds.push([sp.lat,sp.lon]);}
@@ -1077,7 +1078,7 @@ function render(){
     if(p.ornek){const tg=document.createElement("span");tg.className="tag";tg.textContent="Örnek";t.append(" ",tg);}
     const m=document.createElement("div");m.className="m";
     const parts=[];
-    if(pos){if(p.alan)parts.push(fmt(p.alan/1000)+" da");if(p.nitelik)parts.push(baslik(p.nitelik));if(p.mevkii)parts.push(p.mevkii);
+    if(pos){if(p.alan)parts.push(fmtDa(p.alan));if(p.nitelik)parts.push(baslik(p.nitelik));if(p.mevkii)parts.push(p.mevkii);
       if(p.yol)parts.push(p.yol.m<=4000?`yola ${fmtInt(p.yol.m)} m`:"yakın yol bulunamadı");else if(!p.yolHata)parts.push("yol noktası hazırlanıyor");}
     else parts.push(p.hata?("Konum yok: "+p.hata):"Konum yok, rotaya alınmadı");
     if(p.not)parts.push(p.not);
@@ -1121,7 +1122,7 @@ function fillIlce(){
 function readForm(){return {ilce:$("ilce").value||"",ada:normNo($("ada").value),parsel:normNo($("parsel").value),not:$("not").value.trim()};}
 function clearForm(){["ada","parsel","not"].forEach(i=>$(i).value="");$("results").hidden=true;$("goRow").hidden=true;}
 function eklendiMesaji(p){
-  show($("addMsg"),`Listeye eklendi: ${label(p)}${p.alan?" · "+fmt(p.alan/1000)+" da":""}${p.nitelik?" · "+baslik(p.nitelik):""}`,"ok");
+  show($("addMsg"),`Listeye eklendi: ${label(p)}${p.alan?" · "+fmtDa(p.alan):""}${p.nitelik?" · "+baslik(p.nitelik):""}`,"ok");
   $("goBtn").onclick=()=>liveOpen(p);$("goRow").hidden=false;
 }
 const pKey=p=>normName(p.ilce)+"|"+normName(p.mahalle)+"|"+normNo(p.ada)+"|"+normNo(p.parsel);
@@ -1149,7 +1150,7 @@ $("findBtn").onclick=async()=>{
     adaylar.forEach(a=>{
       const li=document.createElement("li");const b=document.createElement("button");b.type="button";
       const n=document.createElement("span");n.className="n";n.textContent=baslik(a.mahalle);
-      const d=document.createElement("span");d.className="d";d.textContent=[a.alan?fmt(a.alan/1000)+" da":"",a.nitelik?baslik(a.nitelik):""].filter(Boolean).join(" · ");
+      const d=document.createElement("span");d.className="d";d.textContent=[a.alan?fmtDa(a.alan):"",a.nitelik?baslik(a.nitelik):""].filter(Boolean).join(" · ");
       b.append(n,d);b.onclick=()=>{const p={id:newId(),ilce:a.ilce,mahalle:a.mahalle,ada:f.ada,parsel:f.parsel,not:f.not,lat:a.lat,lon:a.lon,alan:a.alan,nitelik:a.nitelik,mevkii:a.mevkii,done:false,kaynak:"veri"};
         const ok=ekle(p);$("results").hidden=true;["ada","parsel","not"].forEach(i=>$(i).value="");if(ok)eklendiMesaji(p);};
       li.appendChild(b);ul.appendChild(li);
@@ -1810,16 +1811,16 @@ async function sinirlariGetir(){ // listedeki parsellerin sinirlari (bir kez bul
     degisti=true;}}
   finally{snr.calisiyor=false;if(degisti){save();render();if(live.map&&!$("live").hidden)drawStops();}}
 }
-const SNR_RENK="#FF2BD6"; // pembe-mor: haritadaki diger cizgilerden ayrisir
+const SNR_RENK="#FFFFFF"; // beyaz, altinda koyu golge
 const SNR_STIL=p=>({color:p.done?"#7A8A86":SNR_RENK,weight:3,fillColor:p.done?"#7A8A86":SNR_RENK,fillOpacity:.1,bubblingMouseEvents:false});
-function snrCiz(p,lyr){ // koyu golge + pembe-mor sinir; dokununca bilgi ekrani
+function snrCiz(p,lyr){ // koyu golge + beyaz sinir; dokununca bilgi ekrani
   const h=p.halkalar||p.ring;
   L.polygon(h,{color:"#000",weight:6,opacity:.35,fill:false,interactive:false}).addTo(lyr);
   L.polygon(h,SNR_STIL(p)).bindPopup(()=>parselBilgi(p,listeDurumu(p)),{maxWidth:260}).addTo(lyr);
 }
 function parselBilgi(p,ek){ // bilgi ekrani: ilce/mahalle, ada/parsel, tapu alani ve niteligi
   const d=document.createElement("div");d.className="pbilgi";
-  const alt=[p.alan?fmt(p.alan/1000)+" da":"",p.nitelik?baslik(p.nitelik):""].filter(Boolean).join(" · ");
+  const alt=[p.alan?fmtDa(p.alan):"",p.nitelik?baslik(p.nitelik):""].filter(Boolean).join(" · ");
   d.innerHTML=`<b>${esc(baslik(p.ilce||""))} / ${esc(baslik(p.mahalle||""))}</b><br>${esc(p.ada)} ada ${esc(p.parsel)} parsel`+(alt?`<br>${esc(alt)}`:"");
   if(ek)d.appendChild(ek);
   return d;
