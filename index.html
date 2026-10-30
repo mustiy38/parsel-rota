@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Kayseri Parsel Rota</title>
 <meta name="theme-color" content="#134A40">
-<meta name="version" content="r53">
+<meta name="version" content="r54">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
@@ -327,17 +327,60 @@ summary{cursor:pointer;font-weight:700}
 "use strict";
 const ILCELER_STATIK=["Akkışla","Bünyan","Develi","Felahiye","Hacılar","İncesu","Kocasinan","Melikgazi","Özvatan","Pınarbaşı","Sarıoğlan","Sarız","Talas","Tomarza","Yahyalı","Yeşilhisar"];
 const MERKEZ={lat:38.7205,lon:35.4826};
-const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", LSKEY="kpr-v3", SURUM="r53 · 31.10.2026 00:25";
+const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", LSKEY="kpr-v3", SURUM="r54 · 31.10.2026 00:40";
 const $=id=>document.getElementById(id);
 
 /* ---------- Giris kaydi (Google Formu) ---------- */
 const FORM_URL="https://docs.google.com/forms/d/e/1FAIpQLSd3fmkTfItBVUDalG4LagfDnyX9Vt1WipXeF8LM10wcANVg1g/formResponse";
-const FORM_F={cihaz:"entry.822298983",olay:"entry.947048218",surum:"entry.1933127553"};
+const FORM_F={cihaz:"entry.822298983",olay:"entry.947048218",surum:"entry.1933127553",
+  telefon:""}; // formdaki "Telefon modeli" sorusunun alan kodu (entry.xxxxx); bos ise telefon bilgisi gonderilmez
 function cihazId(){let id=null;try{id=localStorage.getItem("kpr-cihaz");}catch(e){}
   if(!id){const h="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";id="";for(let i=0;i<6;i++)id+=h[Math.floor(Math.random()*h.length)];try{localStorage.setItem("kpr-cihaz",id);}catch(e){}}
   return id;}
-function kayit(olay){
+function telefonMarka(m){ // model kodundan marka (bilinen kaliplar)
+  if(/^(SM|GT|SC|SCV|SHV)-/i.test(m))return "Samsung";
+  if(/^(iPhone|iPad)$/.test(m))return "Apple";
+  if(/^Pixel/i.test(m))return "Google";
+  if(/^(Redmi|POCO|Mi |Xiaomi)/i.test(m)||/^\d{4,5}[A-Z0-9]{3,6}$/.test(m)||/^M\d{4}[A-Z]\d/.test(m))return "Xiaomi";
+  if(/^RMX\d/i.test(m))return "Realme";
+  if(/^CPH\d/i.test(m))return "Oppo";
+  if(/^V\d{4}/.test(m))return "vivo";
+  if(/^[A-Z]{3}-[A-Z]{1,2}\d{1,2}/.test(m))return "Huawei/Honor";
+  if(/^(moto|motorola|XT\d)/i.test(m))return "Motorola";
+  if(/^(GM |General Mobile)/i.test(m))return "General Mobile";
+  return "";
+}
+let telefonSoz=null;
+function telefonBilgisi(){ // "Samsung SM-F966B · Android 16 · Chrome 141 · ekran 412x915" (Android Chrome'da model kodu; iPhone'da yalniz iPhone)
+  if(telefonSoz)return telefonSoz;
+  telefonSoz=(async()=>{
+    const ua=navigator.userAgent||"";let model="",isletim="",tarayici="";
+    try{const d=navigator.userAgentData;
+      if(d&&d.getHighEntropyValues){
+        const h=await Promise.race([d.getHighEntropyValues(["model","platform","platformVersion","fullVersionList"]),new Promise(r=>setTimeout(()=>r({}),1500))]);
+        model=(h.model||"").trim();const pl=h.platform||d.platform||"";
+        if(pl==="Android"&&h.platformVersion)isletim="Android "+String(h.platformVersion).split(".")[0];
+        const br=(h.fullVersionList||d.brands||[]).find(x=>!/Not.?A.?Brand|Chromium/i.test(x.brand));
+        if(br)tarayici=br.brand.replace(/^Google /,"")+" "+String(br.version).split(".")[0];}
+    }catch(e){}
+    let m=ua.match(/\(Linux; Android ([\d.]+); ([^;)]+)/);
+    if(m){if(!isletim)isletim="Android "+m[1].split(".")[0];if(!model&&m[2]!=="K")model=m[2].replace(/ Build\/.*$/,"").trim();}
+    m=ua.match(/\((iPhone|iPad)[^)]*? OS ([\d_]+)/);
+    if(m){model=model||m[1];isletim="iOS "+m[2].split("_").slice(0,2).join(".");}
+    if(!isletim){m=ua.match(/Android ([\d.]+)/);if(m)isletim="Android "+m[1].split(".")[0];}
+    if(!isletim){m=ua.match(/Windows NT [\d.]+|Mac OS X [\d_]+|Linux/);if(m)isletim=m[0].replace(/_/g,".").replace("Windows NT 10.0","Windows").replace(/Mac OS X/,"macOS");}
+    if(!tarayici){m=ua.match(/SamsungBrowser\/(\d+)/)||ua.match(/EdgA?\/(\d+)/)||ua.match(/(?:CriOS|Chrome)\/(\d+)/)||ua.match(/(?:FxiOS|Firefox)\/(\d+)/)||ua.match(/Version\/(\d+)[^ ]* (?:Mobile\/\S+ )?Safari/);
+      if(m)tarayici=(/Samsung/.test(m[0])?"Samsung Internet":/Edg/.test(m[0])?"Edge":/Chrome|CriOS/.test(m[0])?"Chrome":/Firefox|FxiOS/.test(m[0])?"Firefox":"Safari")+" "+m[1];}
+    const marka=telefonMarka(model);
+    const bas=model?(marka&&marka!=="Apple"?marka+" "+model:model):"model bilinmiyor";
+    const kip=(window.matchMedia&&matchMedia("(display-mode: standalone)").matches)?"uygulama":"";
+    return [bas,isletim,tarayici,`ekran ${screen.width}x${screen.height}`,kip].filter(Boolean).join(" · ");
+  })().catch(()=>"model bilinmiyor");
+  return telefonSoz;
+}
+async function kayit(olay){
   try{const b=new URLSearchParams();b.append(FORM_F.cihaz,cihazId());b.append(FORM_F.olay,olay);b.append(FORM_F.surum,SURUM.split(" ")[0]);
+    if(FORM_F.telefon)b.append(FORM_F.telefon,await telefonBilgisi());
     fetch(FORM_URL,{method:"POST",mode:"no-cors",body:b,keepalive:true}).catch(()=>{});}catch(e){}
 }
 function gunlukKayit(){const g=new Date().toISOString().slice(0,10);let son=null;try{son=localStorage.getItem("kpr-son-acilis2");}catch(e){}
