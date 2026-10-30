@@ -307,7 +307,7 @@ summary{cursor:pointer;font-weight:700}
 "use strict";
 const ILCELER_STATIK=["Akkışla","Bünyan","Develi","Felahiye","Hacılar","İncesu","Kocasinan","Melikgazi","Özvatan","Pınarbaşı","Sarıoğlan","Sarız","Talas","Tomarza","Yahyalı","Yeşilhisar"];
 const MERKEZ={lat:38.7205,lon:35.4826};
-const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", SURUM="r45 · 30.10.2026 20:30";
+const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", SURUM="r46 · 30.10.2026 19:50";
 const $=id=>document.getElementById(id);
 
 /* ---------- Giris kaydi (Google Formu) ---------- */
@@ -666,7 +666,7 @@ function drawMap(act,sp){
   state.items.forEach(p=>{
     if(!hasPos(p))return;
     const idx=act.indexOf(p);
-    if(p.ring&&p.ring.length>2){L.polygon(p.halkalar||p.ring,SNR_STIL(p)).bindPopup(()=>parselBilgi(p,listeDurumu(p)),{maxWidth:260}).addTo(parcelLayer);p.ring.forEach(q=>bounds.push(q));}
+    if(p.ring&&p.ring.length>2){snrCiz(p,parcelLayer);p.ring.forEach(q=>bounds.push(q));}
     const ic=L.divIcon({className:"",html:`<div class="num-icon${p.done?" done":""}">${p.done?"✓":(idx>=0?idx+1:"·")}</div>`,iconSize:[26,26],iconAnchor:[13,13]});
     const mk=L.marker([p.lat,p.lon],{icon:ic}).addTo(parcelLayer);
     mk.bindPopup(`<b>${esc(label(p))}</b><br>${p.alan?fmt(p.alan/1000)+" da":""} ${esc(p.nitelik||"")}<br><a href="${dirUrl([p])}" target="_blank" rel="noopener">Yol tarifi</a>`);
@@ -1595,7 +1595,7 @@ function drawStops(){
   live.lyr.clearLayers();
   live.stops.forEach((q,i)=>{const cls="stop-icon"+(i<live.cur?" done":(i===live.cur?" cur":""));const sz=i===live.cur?32:28;
     L.marker([q.lat,q.lon],{icon:L.divIcon({className:"",html:`<div class="${cls}">${harf(i)}</div>`,iconSize:[sz,sz],iconAnchor:[sz/2,sz/2]})}).addTo(live.lyr).bindPopup(harf(i)+" · "+esc(label(q)));
-    if(q.ring&&q.ring.length>2)L.polygon(q.halkalar||q.ring,SNR_STIL(q)).bindPopup(()=>parselBilgi(q,listeDurumu(q)),{maxWidth:260}).addTo(live.lyr);});
+    if(q.ring&&q.ring.length>2)snrCiz(q,live.lyr);});
 }
 /* ---------- Diger rotalar: haritada gri cizilir, dugmeyle ya da cizgiye dokunarak secilir ---------- */
 function liveSecenek(leg){live.secenek=leg?[leg].concat(leg.alts||[]):[];live.secIdx=0;liveAltUI();}
@@ -1810,7 +1810,13 @@ async function sinirlariGetir(){ // listedeki parsellerin sinirlari (bir kez bul
     degisti=true;}}
   finally{snr.calisiyor=false;if(degisti){save();render();if(live.map&&!$("live").hidden)drawStops();}}
 }
-const SNR_STIL=p=>({color:p.done?"#7A8A86":"#A23A2C",weight:3,fillColor:p.done?"#7A8A86":"#A23A2C",fillOpacity:.08,bubblingMouseEvents:false});
+const SNR_RENK="#FF2BD6"; // pembe-mor: haritadaki diger cizgilerden ayrisir
+const SNR_STIL=p=>({color:p.done?"#7A8A86":SNR_RENK,weight:3,fillColor:p.done?"#7A8A86":SNR_RENK,fillOpacity:.1,bubblingMouseEvents:false});
+function snrCiz(p,lyr){ // koyu golge + pembe-mor sinir; dokununca bilgi ekrani
+  const h=p.halkalar||p.ring;
+  L.polygon(h,{color:"#000",weight:6,opacity:.35,fill:false,interactive:false}).addTo(lyr);
+  L.polygon(h,SNR_STIL(p)).bindPopup(()=>parselBilgi(p,listeDurumu(p)),{maxWidth:260}).addTo(lyr);
+}
 function parselBilgi(p,ek){ // bilgi ekrani: ilce/mahalle, ada/parsel, tapu alani ve niteligi
   const d=document.createElement("div");d.className="pbilgi";
   const alt=[p.alan?fmt(p.alan/1000)+" da":"",p.nitelik?baslik(p.nitelik):""].filter(Boolean).join(" · ");
