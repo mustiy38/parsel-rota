@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Kayseri Parsel Rota</title>
 <meta name="theme-color" content="#134A40">
-<meta name="version" content="r38">
+<meta name="version" content="r49">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
@@ -58,6 +58,12 @@ button:disabled{opacity:.5;cursor:default}
 .msg.err{background:color-mix(in srgb,var(--alert) 14%,var(--surface));color:var(--alert)}
 .msg.ok{background:color-mix(in srgb,var(--ok) 16%,var(--surface))}
 .msg a{color:inherit;font-weight:700}
+.kilitbtn{padding:5px 12px;font-size:13px;margin-top:2px;vertical-align:middle;border-color:currentColor}
+.msg.kilit .kilitbtn{background:var(--surface);color:var(--alert)}
+.empty.kilitli{color:var(--label)}
+.empty.kilitli .kilitbtn{color:var(--heading);margin-left:4px}
+#veriBox.vurgu{animation:vurgu 1.8s ease-out}
+@keyframes vurgu{0%,40%{box-shadow:0 0 0 4px var(--gold)}100%{box-shadow:0 0 0 0 transparent}}
 section.compact{padding:10px 14px;gap:8px}
 .kilitrow{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:14px;min-height:28px}
 .kilitrow .kt{min-width:0;overflow-wrap:anywhere}
@@ -133,7 +139,7 @@ summary{cursor:pointer;font-weight:700}
 .me-arrow{width:0;height:0;border-left:11px solid transparent;border-right:11px solid transparent;border-bottom:26px solid #1E88E5;filter:drop-shadow(0 0 2px #fff);transform-origin:50% 65%}
 .livebar .info.big{font-size:24px}
 [hidden]{display:none!important}
-@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}#veriBox.vurgu{animation:none;outline:3px solid var(--gold)}}
 </style>
 </head>
 <body>
@@ -307,7 +313,7 @@ summary{cursor:pointer;font-weight:700}
 "use strict";
 const ILCELER_STATIK=["Akkışla","Bünyan","Develi","Felahiye","Hacılar","İncesu","Kocasinan","Melikgazi","Özvatan","Pınarbaşı","Sarıoğlan","Sarız","Talas","Tomarza","Yahyalı","Yeşilhisar"];
 const MERKEZ={lat:38.7205,lon:35.4826};
-const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", SURUM="r48 · 30.10.2026 21:45";
+const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", LSKEY="kpr-v3", SURUM="r49 · 30.10.2026 22:05";
 const $=id=>document.getElementById(id);
 
 /* ---------- Giris kaydi (Google Formu) ---------- */
@@ -365,19 +371,23 @@ async function deriveKey(pw,saltB64,iter){
   const bits=await crypto.subtle.deriveBits({name:"PBKDF2",salt:b64ToBytes(saltB64),iterations:iter,hash:"SHA-256"},base,256);
   return new Uint8Array(bits);
 }
-async function importKey(raw){return crypto.subtle.importKey("raw",raw,{name:"AES-GCM"},false,["decrypt"]);}
+async function importKey(raw){return crypto.subtle.importKey("raw",raw,{name:"AES-GCM"},false,["encrypt","decrypt"]);}
 async function decryptBytes(u8){const iv=u8.slice(0,12),ct=u8.slice(12);return new Uint8Array(await crypto.subtle.decrypt({name:"AES-GCM",iv},veri.key,ct));}
+async function encryptBytes(u8,key){const iv=crypto.getRandomValues(new Uint8Array(12));const ct=new Uint8Array(await crypto.subtle.encrypt({name:"AES-GCM",iv},key||veri.key,u8));const o=new Uint8Array(12+ct.length);o.set(iv);o.set(ct,12);return o;}
 async function gunzipText(u8){const ds=new DecompressionStream("gzip");return await new Response(new Blob([u8]).stream().pipeThrough(ds)).text();}
+async function gzipText(s){const cs=new CompressionStream("gzip");return new Uint8Array(await new Response(new Blob([s]).stream().pipeThrough(cs)).arrayBuffer());}
 const veriBaslatSonra=[];
 async function veriBaslat(){
   let m=null;
   try{const r=await fetch("d/m.json",{cache:"no-store"});if(r.ok){m=await r.json();await idbPut("m.json",m);}}catch(e){}
   if(!m)m=await idbGet("m.json");
-  if(!m||!m.s||!m.p){$("veriBox").hidden=true;return;}
+  if(!m||!m.s||!m.p){veri.yok=true;$("veriBox").hidden=true;listeAciliyor=false;render();checkHash();return;}
   veri.manifest={salt:m.s,iter:m.i,kontrol:m.k,surum:m.v,p:m.p,ilceler:[],toplam:0};$("veriBox").hidden=false;
   try{const raw=localStorage.getItem(KKEY);if(raw){veri.key=await importKey(b64ToBytes(raw));await manifestAc();}}
   catch(e){veri.key=null;try{localStorage.removeItem(KKEY);}catch(x){}}
-  fillIlce();veriUI();veriBaslatSonra.forEach(f=>{try{f();}catch(e){}});
+  fillIlce();veriUI();
+  if(!veriHazir()){listeAciliyor=false;render();checkHash();}
+  veriBaslatSonra.forEach(f=>{try{f();}catch(e){}});
 }
 async function manifestAc(){ // anahtar dogrulanir, sifreli ilce listesi acilir
   const m=veri.manifest;
@@ -397,12 +407,17 @@ $("pwBtn").onclick=async()=>{
     const raw=await deriveKey(pw,m.salt,m.iter||600000);veri.key=await importKey(raw);
     await manifestAc();
     try{localStorage.setItem(KKEY,bytesToB64(raw));}catch(e){}
-    $("pw").value="";veriUI();$("addMsg").hidden=true;kayit("giris");veriBaslatSonra.forEach(f=>{try{f();}catch(e){}});
+    $("pw").value="";veriUI();$("addMsg").hidden=true;document.querySelectorAll(".msg.kilit").forEach(x=>x.hidden=true);kayit("giris");veriBaslatSonra.forEach(f=>{try{f();}catch(e){}});
     veri.ilce={};fillIlce();
   }catch(e){veri.key=null;show($("addMsg"),"Parola yanlış.","err");kayit("yanlis-parola");}
   finally{$("pwBtn").disabled=false;}
 };
-$("veriLock").onclick=()=>{rnReset();veri.key=null;veri.ilce={};veri.manifest.ilceler=[];veri.manifest.toplam=0;try{localStorage.removeItem(KKEY);}catch(e){}fillIlce();veriUI();};
+$("veriLock").onclick=async()=>{
+  $("veriLock").disabled=true;
+  try{await listeKilitle();}finally{$("veriLock").disabled=false;}
+  rnReset();veri.key=null;veri.ilce={};veri.manifest.ilceler=[];veri.manifest.toplam=0;try{localStorage.removeItem(KKEY);}catch(e){}
+  fillIlce();veriUI();render();
+};
 async function loadBlob(path,etiket){
   const ck=path+"@"+(veri.manifest.salt||veri.manifest.surum||"");
   const taze=async()=>{const r=await fetch(path,{cache:"no-cache"});if(!r.ok)throw new Error("Veri dosyası alınamadı: "+etiket);return await r.arrayBuffer();};
@@ -546,6 +561,7 @@ async function resolveIds(p){
 
 /* ---------- Ortak konum bulucu (toplu islem): once ekip verisi, sonra TKGM ---------- */
 async function konumBul(p){
+  if(!kilitAcik())return {ok:false,hata:"veri kilitli"};
   let veriNotu="";
   if(veriHazir()){
     try{const r=await veriBul(p);
@@ -554,6 +570,7 @@ async function konumBul(p){
       veriNotu=r&&r.eslesmedi?"veride mahalle eşleşmedi":"veride yok";
     }catch(e){veriNotu="veri okunamadı";}
   }
+  if(!kilitAcik())return {ok:false,hata:"veri kilitli"};
   if(!p.mahalle)return {ok:false,hata:(veriNotu?veriNotu+", ":"")+"TKGM için mahalle gerekli"};
   try{
     await resolveIds(p);
@@ -574,8 +591,86 @@ const SAMPLE=[
  {ilce:"Tomarza",mahalle:"Örnek Mahalle D",ada:"330",parsel:"21",lat:38.449,lon:35.798,not:"Örnek kayıt"},
  {ilce:"Develi",mahalle:"Örnek Mahalle E",ada:"58",parsel:"9",lat:38.389,lon:35.492,not:"Örnek kayıt"}
 ].map((p,i)=>({...p,id:"s"+i,ornek:true,done:false}));
-function load(){try{const s=JSON.parse(localStorage.getItem(KEY)||"null");if(s&&Array.isArray(s.items))state=Object.assign(state,s);else state.items=SAMPLE.map(x=>({...x}));}catch(e){state.items=SAMPLE.map(x=>({...x}));}}
-function save(){try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){}}
+function load(){ // ayarlar acik saklanir; parsel listesi sifrelidir ve ancak veri kilidi acilinca yuklenir
+  try{const s=JSON.parse(localStorage.getItem(KEY)||"null");
+    if(s){["start","custom","chunk","sonIlce"].forEach(k=>{if(s[k]!=null)state[k]=s[k];});
+      if(Array.isArray(s.items))eskiListe=s.items;}}catch(e){}
+  state.items=[];
+}
+function save(){
+  const o={start:state.start,custom:state.custom,chunk:state.chunk,sonIlce:state.sonIlce};
+  if(eskiListe)o.items=eskiListe; // eski surumden kalan sifresiz liste: kilit acilip sifrelenene kadar korunur
+  try{localStorage.setItem(KEY,JSON.stringify(o));}catch(e){}
+  if(listeAcik&&veri.key)listeKaydet();
+}
+
+/* ---------- Parsel listesi kilidi: liste telefonda ekip anahtariyla sifreli; kilitliyken hicbir parsel bilgisi bellege alinmaz ---------- */
+let listeAcik=false,listeAciliyor=false,eskiListe=null,lsYaz=null,lsTekrar=false;
+const kilitAcik=()=>listeAcik&&veriHazir();
+function lsVar(){try{return !!localStorage.getItem(LSKEY);}catch(e){return false;}}
+function listeKaydet(){ // ayni anda tek sifreleme; arada gelen degisiklik bir sonraki turda yazilir
+  if(lsYaz){lsTekrar=true;return lsYaz;}
+  lsYaz=(async()=>{
+    await null;
+    try{do{lsTekrar=false;
+        const key=veri.key;if(!key||!listeAcik)break;
+        const enc=await encryptBytes(await gzipText(JSON.stringify(state.items)),key);
+        if(veri.key!==key||!listeAcik)break;
+        try{localStorage.setItem(LSKEY,bytesToB64(enc));}catch(e){console.warn("liste kaydedilemedi",e);}
+      }while(lsTekrar);}
+    catch(e){console.warn("liste şifrelenemedi",e);}
+    finally{lsYaz=null;}
+  })();
+  return lsYaz;
+}
+async function listeYukle(){ // kilit acilinca sifreli listeyi coz; eski surumden kalan acik listeyi sifreleyip tasi
+  if(listeAcik||!veriHazir())return;
+  const key=veri.key;let items=null,enc=null;
+  try{enc=localStorage.getItem(LSKEY);}catch(e){}
+  if(enc){try{items=JSON.parse(await gunzipText(await decryptBytes(b64ToBytes(enc))));}catch(e){items=null;}}
+  if(veri.key!==key||listeAcik)return;
+  const tasi=!Array.isArray(items)&&Array.isArray(eskiListe);
+  if(!Array.isArray(items))items=tasi?eskiListe:(enc?[]:SAMPLE.map(x=>({...x})));
+  state.items=items.filter(x=>x&&typeof x==="object");listeAcik=true;listeAciliyor=false;
+  dedupe();
+  if(state.items.length&&state.items.every(p=>p.ornek))state.items=optimize(state.items,null);
+  if(tasi||!enc)await listeKaydet();
+  if(eskiListe&&lsVar()){eskiListe=null;save();}
+  needFit=true;routeCache.key=null;render();snapAll();checkHash();
+}
+veriBaslatSonra.push(()=>{listeYukle();});
+async function listeKilitle(){ // son hali sifreli kaydedilir, sonra ekrandaki ve bellekteki parsel bilgileri silinir
+  if(listeAcik&&veri.key)await listeKaydet();
+  listeAcik=false;listeAciliyor=false;state.items=[];
+  Object.assign(routeCache,{key:null,line:null,legs:null,km:null,dk:null,fail:{},err:""});
+  liveClose();if(live.lyr)live.lyr.clearLayers();if(live.routeLyr)live.routeLyr.clearLayers();
+  Object.assign(live,{p:null,stops:[],legs:[],legErr:[],secenek:[],graph:null});
+  if(map)map.closePopup();
+  snr.karo.clear();snr.bekleyen.clear();
+  $("results").hidden=true;$("resList").innerHTML="";$("goRow").hidden=true;$("clearConfirm").hidden=true;$("shareBanner").hidden=true;
+  ["addMsg","shareMsg","fileMsg","bulkMsg","offMsg","mapMsg"].forEach(i=>$(i).hidden=true);
+  needFit=true;
+}
+function kilitMetni(islem){
+  if(listeAciliyor)return "Liste açılıyor…";
+  if(veri.yok)return "Ekip verisi yüklenemedi; internet bağlantısını kontrol edip sayfayı yenileyin.";
+  return islem?"Veri kilitli. İşlem yapmak için önce veri kilidini açın.":"Veri kilitli. Parsel bilgilerini görmek için önce veri kilidini açın.";
+}
+function kilideGit(){ // sayfanin ustundeki parola alanina goturur (klavye kendiliginden acilmaz)
+  const fs=isFS();if(fs)toggleFS();
+  if(map)map.closePopup();
+  const b=$("veriBox");
+  setTimeout(()=>{if(b.hidden)return;b.scrollIntoView({behavior:"smooth",block:"center"});b.classList.remove("vurgu");void b.offsetWidth;b.classList.add("vurgu");},fs?300:0);
+}
+function kilitDugmesi(cls){const b=document.createElement("button");b.type="button";b.className=cls||"mini kilitbtn";b.textContent="Kilidi aç";b.onclick=kilideGit;return b;}
+function kilitUyar(el){
+  el.hidden=false;el.className="msg err kilit";
+  el.textContent=listeAciliyor?"Liste açılıyor, birkaç saniye sonra yeniden deneyin.":kilitMetni(true);
+  if(!listeAciliyor&&!veri.yok){el.append(" ");el.appendChild(kilitDugmesi());}
+}
+function kilitli(el){if(kilitAcik())return false;kilitUyar(el);return true;} // kilitliyse uyarir ve true doner
+function kilitPopup(){const d=document.createElement("div");d.className="pbilgi";d.textContent=kilitMetni(false);
+  if(!listeAciliyor&&!veri.yok)d.appendChild(kilitDugmesi("primary pbtn"));return d;}
 function newId(){return "p"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
 function dropSamples(){if(state.items.length&&state.items.every(p=>p.ornek))state.items=[];}
 
@@ -1097,10 +1192,13 @@ function render(){
   if(!$("routeMsg").hidden)$("routeMsg").textContent="Yol rotası alınamadı ("+(routeCache.err||"bilinmeyen hata")+"). Haritada kuş uçuşu çizgi gösteriliyor; 30 sn sonra yeniden denenir.";
   $("planSub").textContent=act.length?"sıralı":"";
   const n=state.items.length,eks=state.items.filter(p=>!hasPos(p)).length,dn=state.items.filter(p=>p.done).length;
-  $("listSub").textContent=`${n} parsel${eks?` · ${eks} konumsuz`:""}${dn?` · ${dn} gidildi`:""}${act.length>1?(gercek?` · ${fmt(routeCache.km)} km · ${fmtInt(routeCache.dk)} dk`:` · ${fmt(km)} km kuş uçuşu`):""}`;
+  $("listSub").textContent=!listeAcik?(listeAciliyor?"açılıyor…":"kilitli"):`${n} parsel${eks?` · ${eks} konumsuz`:""}${dn?` · ${dn} gidildi`:""}${act.length>1?(gercek?` · ${fmt(routeCache.km)} km · ${fmtInt(routeCache.dk)} dk`:` · ${fmt(km)} km kuş uçuşu`):""}`;
   $("mapSub").textContent=n?`${n-eks} parsel`:"";
   const ol=$("route");ol.innerHTML="";
-  if(!n){const li=document.createElement("li");li.className="empty";li.textContent="Liste boş. Yukarıdan parsel arayın ya da Excel dosyası yükleyin.";ol.appendChild(li);}
+  if(!n){const li=document.createElement("li");li.className="empty";
+    if(listeAcik)li.textContent="Liste boş. Yukarıdan parsel arayın ya da Excel dosyası yükleyin.";
+    else{li.classList.add("kilitli");li.textContent=kilitMetni(false);if(!listeAciliyor&&!veri.yok){li.append(" ");li.appendChild(kilitDugmesi());}}
+    ol.appendChild(li);}
   let k=0;
   state.items.forEach(p=>{
     const li=document.createElement("li");const pos=hasPos(p);
@@ -1162,14 +1260,13 @@ const pKey=p=>normName(p.ilce)+"|"+normName(p.mahalle)+"|"+normNo(p.ada)+"|"+nor
 function bulDup(p){const k=pKey(p);return state.items.find(x=>!x.ornek&&pKey(x)===k)||null;}
 function dedupe(){const seen=new Set();state.items=state.items.filter(x=>{if(x.ornek)return true;const k=pKey(x);if(seen.has(k))return false;seen.add(k);return true;});}
 function autoSort(){const act=active();if(act.length<2)return;const ord=optimize(act,startPoint());const others=state.items.filter(p=>!act.includes(p));state.items=ord.concat(others);}
-function ekle(p){const d=bulDup(p);if(d){const sira=active().indexOf(d)+1;show($("addMsg"),`Bu parsel zaten listede${sira?` (sıra ${sira})`:""}: ${label(d)}`,"err");$("goBtn").onclick=()=>liveOpen(d);$("goRow").hidden=!hasPos(d);return false;}
+function ekle(p){if(kilitli($("addMsg")))return false;const d=bulDup(p);if(d){const sira=active().indexOf(d)+1;show($("addMsg"),`Bu parsel zaten listede${sira?` (sıra ${sira})`:""}: ${label(d)}`,"err");$("goBtn").onclick=()=>liveOpen(d);$("goRow").hidden=!hasPos(d);return false;}
   dropSamples();state.items.push(p);autoSort();needFit=true;save();render();snapAll();return true;}
 $("findBtn").onclick=async()=>{
+  if(kilitli($("addMsg")))return;
   const f=readForm();
   if(!f.ilce){show($("addMsg"),"Önce ilçe seçin.","err");return;}
   if(!f.ada||!f.parsel){show($("addMsg"),"Ada ve parsel numarasını yazın.","err");return;}
-  if(!veri.manifest){show($("addMsg"),"Ekip verisi yüklenemedi; internet bağlantısını kontrol edip sayfayı yenileyin.","err");return;}
-  if(!veriHazir()){show($("addMsg"),"Lütfen veri parolasını girin.","err");return;}
   const e=veriEntry(f.ilce);
   if(!e){show($("addMsg"),`${f.ilce} ilçesi ekip verisinde yok. Konumu elle girebilirsiniz.`,"err");return;}
   state.sonIlce=f.ilce;save();
@@ -1234,8 +1331,10 @@ function excelKayitlari(ws){
   const g=(r,k)=>map[k]===undefined?"":String(r[map[k]]??"").trim();
   return rows.map(r=>({ilce:g(r,"ilce"),mahalle:g(r,"mahalle"),ada:g(r,"ada"),parsel:g(r,"parsel"),enlem:g(r,"enlem"),boylam:g(r,"boylam"),konum:g(r,"konum"),not:g(r,"not")}));
 }
+$("file").addEventListener("click",ev=>{if(kilitli($("fileMsg")))ev.preventDefault();}); // kilitliyken dosya secici acilmaz
 $("file").onchange=async e=>{
   const f=e.target.files[0];if(!f)return;
+  if(kilitli($("fileMsg"))){e.target.value="";return;}
   if(typeof XLSX==="undefined"){show($("fileMsg"),"Excel okuyucu yüklenemedi. Bağlantıyı kontrol edip sayfayı yenileyin.","err");return;}
   try{
     const buf=await f.arrayBuffer();const wb=XLSX.read(buf,{type:"array"});const recs=excelKayitlari(wb.Sheets[wb.SheetNames[0]]);
@@ -1256,19 +1355,20 @@ $("file").onchange=async e=>{
     dropSamples();state.items.push(...yeni);autoSort();
     needFit=true;save();render();snapAll();
     show($("fileMsg"),`${ok} parsel eklendi${nopos?`, ${nopos} tanesinin konumu yok`:""}${muk?`, ${muk} mükerrer satır atlandı`:""}${bad?`, ${bad} satır ada/parsel olmadığı için atlandı`:""}.${nopos?" Konumlar için aşağıdaki düğmeye basın.":""}`,nopos?"":"ok");
-    if(nopos){if(veriHazir())$("bulkBtn").click();else if(veri.manifest)show($("fileMsg"),`${ok} parsel eklendi. Konumları için lütfen veri parolasını girin.`,"err");}
+    if(nopos)$("bulkBtn").click();
   }catch(err){show($("fileMsg"),"Dosya okunamadı. Excel veya CSV dosyası seçin.","err");}
   e.target.value="";
 };
 let bulkRunning=false;
 $("bulkBtn").onclick=async()=>{
   if(bulkRunning)return;
+  if(kilitli($("bulkMsg")))return;
   const todo=state.items.filter(p=>!hasPos(p));
   if(!todo.length){autoSort();needFit=true;save();render();show($("bulkMsg"),active().length>1?"Parseller en kısa ziyaret sırasına dizildi.":"Sıralanacak birden fazla parsel yok.","ok");return;}
-  if(veri.manifest&&!veriHazir()){show($("bulkMsg"),"Lütfen veri parolasını girin.","err");return;}
   bulkRunning=true;$("bulkBtn").disabled=true;$("bulkBar").hidden=false;
   let okN=0,failN=0,limitStop=false;
   for(let i=0;i<todo.length;i++){
+    if(!kilitAcik())break; // islem sirasinda kilitlendiyse dur
     const p=todo[i];show($("bulkMsg"),`${i+1}/${todo.length}: ${label(p)} aranıyor…`);
     const r=await konumBul(p);
     if(r.ok)okN++;else{p.hata=r.hata;failN++;if(r.servis&&/limit/i.test(r.hata)){limitStop=true;}}
@@ -1277,7 +1377,9 @@ $("bulkBtn").onclick=async()=>{
     if(limitStop)break;
     if(r.kaynak==="tkgm")await new Promise(res=>setTimeout(res,300));
   }
-  autoSort();needFit=true;save();render();bulkRunning=false;$("bulkBtn").disabled=false;snapAll();
+  bulkRunning=false;$("bulkBtn").disabled=false;
+  if(!kilitAcik()){$("bulkBar").hidden=true;$("bulkMsg").hidden=true;return;}
+  autoSort();needFit=true;save();render();snapAll();
   show($("bulkMsg"),`Tamamlandı: ${okN} konum bulundu${failN?`, ${failN} parsel bulunamadı (listede kırmızı işaretli; nedeni yanında yazar)`:""}.${limitStop?" TKGM günlük limiti dolduğu için kalanlar sorgulanmadı.":""}`,failN?"err":"ok");
 };
 /* ---------- Rota ve harita dugmeleri ---------- */
@@ -1303,25 +1405,37 @@ $("locBtn").onclick=()=>locate(()=>{render();if(map)map.setView([me.lat,me.lon],
 $("fitBtn").onclick=()=>{needFit=true;drawMap(active(),startPoint());};
 
 /* ---------- Paylasim ---------- */
-function b64e(s){return btoa(unescape(encodeURIComponent(s)));}
 function b64d(s){return decodeURIComponent(escape(atob(s)));}
+const b64url=u=>bytesToB64(u).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+function b64urlBytes(s){s=s.replace(/-/g,"+").replace(/_/g,"/");while(s.length%4)s+="=";return b64ToBytes(s);}
 $("shareBtn").onclick=async()=>{
+  if(kilitli($("shareMsg")))return;
   const data=state.items.filter(p=>!p.ornek).map(p=>[p.ilce||"",p.mahalle||"",p.ada||"",p.parsel||"",hasPos(p)?p.lat:null,hasPos(p)?p.lon:null,p.not||"",p.alan||null,p.nitelik||""]);
   if(!data.length){show($("shareMsg"),"Paylaşılacak parsel yok.","err");return;}
-  const url=location.origin+location.pathname+"#d="+encodeURIComponent(b64e(JSON.stringify(data)));
-  try{await navigator.clipboard.writeText(url);show($("shareMsg"),"Link kopyalandı. WhatsApp ile ekibe gönderebilirsiniz.","ok");}
+  let url;
+  try{url=location.origin+location.pathname+"#e="+b64url(await encryptBytes(await gzipText(JSON.stringify(data))));} // link sifreli: yalniz parolayi bilen acar
+  catch(e){show($("shareMsg"),"Link hazırlanamadı.","err");return;}
+  try{await navigator.clipboard.writeText(url);show($("shareMsg"),"Link kopyalandı. WhatsApp ile ekibe gönderebilirsiniz; link şifrelidir, yalnız ekip parolasıyla açılır.","ok");}
   catch(e){show($("shareMsg"),"Linki kopyalayın: "+url);}
 };
-function checkHash(){
-  const m=location.hash.match(/^#d=(.+)$/);if(!m)return;
-  let data;try{data=JSON.parse(b64d(decodeURIComponent(m[1])));}catch(e){return;}
-  if(!Array.isArray(data)||!data.length)return;
+function paylasimKapat(){$("shareBanner").hidden=true;history.replaceState(null,"",location.pathname+location.search);}
+async function checkHash(){ // paylasim linki: #e= sifreli (yeni), #d= eski sifresiz link; ikisi de kilit acilmadan gosterilmez
+  const h=location.hash;if(!/^#[de]=./.test(h))return;
+  $("shareYes").textContent="Listeye ekle";$("shareYes").hidden=false;
+  if(!kilitAcik()){
+    if(listeAciliyor)return; // kilit acilinca yeniden bakilir
+    $("shareBanner").hidden=false;$("shareText").textContent="Size bir parsel listesi paylaşıldı. Görmek ve listenize eklemek için önce veri kilidini açın.";
+    $("shareYes").textContent="Kilidi aç";$("shareYes").onclick=kilideGit;$("shareYes").hidden=!!veri.yok;$("shareNo").onclick=paylasimKapat;
+    return;}
+  let data=null;
+  try{if(h.startsWith("#e="))data=JSON.parse(await gunzipText(await decryptBytes(b64urlBytes(h.slice(3)))));else data=JSON.parse(b64d(decodeURIComponent(h.slice(3))));}catch(e){data=null;}
+  if(!Array.isArray(data)||!data.length){$("shareBanner").hidden=false;$("shareText").textContent="Paylaşım linki açılamadı (eksik kopyalanmış ya da eski parolayla hazırlanmış olabilir).";$("shareYes").hidden=true;$("shareNo").onclick=paylasimKapat;return;}
   $("shareBanner").hidden=false;$("shareText").textContent=`Paylaşılan linkte ${data.length} parsel var. Listenize eklensin mi?`;
-  $("shareYes").onclick=()=>{dropSamples();data.forEach(d=>{
+  $("shareYes").onclick=()=>{if(kilitli($("shareMsg")))return;dropSamples();data.forEach(d=>{
       if(bulDup({ilce:d[0],mahalle:d[1],ada:d[2],parsel:d[3]}))return;
       state.items.push({id:newId(),ilce:d[0],mahalle:d[1],ada:d[2],parsel:d[3],lat:d[4]??undefined,lon:d[5]??undefined,not:d[6]||"",alan:d[7]||undefined,nitelik:d[8]||"",done:false,kaynak:"link"});});
-    autoSort();needFit=true;save();render();snapAll();$("shareBanner").hidden=true;history.replaceState(null,"",location.pathname);};
-  $("shareNo").onclick=()=>{$("shareBanner").hidden=true;history.replaceState(null,"",location.pathname);};
+    autoSort();needFit=true;save();render();snapAll();paylasimKapat();};
+  $("shareNo").onclick=paylasimKapat;
 }
 
 /* ---------- Yol noktasi: parsele en yakin arac yolu (OpenStreetMap / OSRM) ---------- */
@@ -1339,6 +1453,7 @@ async function snapAll(tekrar){
   if(snapRunning)return;snapRunning=true;
   try{
     for(const p of state.items){
+      if(!listeAcik)break;
       if(!hasPos(p)||p.ornek||yolGuncel(p))continue;
       let y=null;try{y=await yolNoktasiRn(p);}catch(e){y=null;}
       if(y){p.yol=y;delete p.yolHata;save();render();continue;}
@@ -1839,6 +1954,7 @@ function snrHalka(f){ // yuvarlanmis halkalar ve en buyugu
 async function sinirlariGetir(){ // listedeki parsellerin sinirlari (bir kez bulunur, listeyle saklanir)
   if(snr.calisiyor||!veriHazir())return;snr.calisiyor=true;let degisti=false;
   try{for(const p of state.items){
+    if(!listeAcik)break;
     if(!hasPos(p)||p.ornek||p.sinir||(p.ring&&p.ring.length>2))continue;
     let f;try{f=await snrParsel(p);}catch(e){continue;}
     if(f===undefined)continue;
@@ -1862,10 +1978,11 @@ function parselBilgi(p,ek){ // bilgi ekrani: ilce/mahalle, ada/parsel, tapu alan
 }
 function listeDurumu(p){const e=document.createElement("div");e.className="pdurum";const s=active().indexOf(p)+1;e.textContent=p.done?"Listede · gidildi":(s?`Listede · sıra ${s}`:"Listede");return e;}
 function snrSecimKatman(m){if(!m._snrSecim){m._snrSecim=L.layerGroup().addTo(m);m.on("popupclose",()=>m._snrSecim.clearLayers());}return m._snrSecim;}
-async function haritaDokun(m,e){ // haritada dokunulan noktadaki parselin bilgisi
-  if(!veriHazir())return;
+async function haritaDokun(m,e){ // haritada dokunulan noktadaki parselin bilgisi (kilitliyse yalniz uyari)
+  if(!kilitAcik()){L.popup({maxWidth:240}).setLatLng(e.latlng).setContent(kilitPopup()).openOn(m);return;}
   const la=e.latlng.lat,lo=e.latlng.lng;
   let r;try{r=await snrNokta(la,lo);}catch(err){return;}
+  if(!kilitAcik())return;
   if(!r.f){if(r.eksik)L.popup({maxWidth:240}).setLatLng(e.latlng).setContent("Bu bölgenin parsel sınırları telefonda yok. İnternete bağlanın ya da ilçeyi indirin.").openOn(m);return;}
   const f=r.f,p={ilce:f.ilce,mahalle:f.mahalle,ada:f.ada,parsel:f.parsel,alan:f.alan,nitelik:f.nitelik};
   const mevcut=bulDup(p);let ek;
@@ -1883,7 +2000,7 @@ async function snrListeyeEkle(f,btn){
   if(p.alan==null&&f.alan)p.alan=f.alan;if(!p.nitelik&&f.nitelik)p.nitelik=f.nitelik;
   const h=snrHalka(f);p.ring=h.ring;if(h.halkalar)p.halkalar=h.halkalar;p.sinir="ok";
   const ok=ekle(p);
-  btn.textContent=ok?`Listeye eklendi · sıra ${active().indexOf(p)+1}`:"Zaten listede";
+  btn.textContent=ok?`Listeye eklendi · sıra ${active().indexOf(p)+1}`:(kilitAcik()?"Zaten listede":"Veri kilitli");
   if(live.map&&!$("live").hidden)drawStops();
 }
 
@@ -1898,7 +2015,7 @@ async function offListe(){
 let offRunning=false;
 $("offBtn").onclick=async()=>{
   if(offRunning)return;
-  if(!veriHazir()){show($("offMsg"),"Önce veri parolasını girin.","err");return;}
+  if(kilitli($("offMsg")))return;
   const ad=$("offIlce").value;const e=veriEntry(ad);if(!e){show($("offMsg"),ad+" ekip verisinde yok.","err");return;}
   if(!navigator.onLine){show($("offMsg"),"İndirme için internet gerekli.","err");return;}
   offRunning=true;$("offBtn").disabled=true;$("offBar").hidden=false;$("offFill").style.width="0%";
@@ -1959,23 +2076,22 @@ veriBaslatSonra.push(()=>{fillOffIlce();offListe();rnReset();routeCache.key=null
 $("ilce").onchange=()=>{$("results").hidden=true;$("goRow").hidden=true;state.sonIlce=$("ilce").value||"";save();};
 $("pw").addEventListener("keydown",ev=>{if(ev.key==="Enter"){ev.preventDefault();$("pwBtn").click();}});
 ["ada","parsel"].forEach(i=>$(i).addEventListener("keydown",ev=>{if(ev.key==="Enter"){ev.preventDefault();$("findBtn").click();}}));
-$("clearBtn").onclick=()=>{$("clearConfirm").hidden=false;};
+$("clearBtn").onclick=()=>{if(kilitli($("shareMsg")))return;$("clearConfirm").hidden=false;};
 $("clearNo").onclick=()=>{$("clearConfirm").hidden=true;};
-$("clearYes").onclick=()=>{state.items=[];$("clearConfirm").hidden=true;needFit=true;save();render();};
+$("clearYes").onclick=()=>{$("clearConfirm").hidden=true;if(kilitli($("shareMsg")))return;state.items=[];needFit=true;save();render();};
+$("fitBtn").addEventListener("click",()=>{if(!listeAcik)kilitUyar($("mapMsg"));});
 
 if("serviceWorker" in navigator){try{navigator.serviceWorker.register("sw.js").catch(()=>{});}catch(e){}}
 load();
-dedupe();
+try{listeAciliyor=!!localStorage.getItem(KKEY);}catch(e){} // kayitli anahtar varsa liste birazdan kendiliginden acilir
 console.log("Kayseri Parsel Rota sürüm "+SURUM);
 $("start").value=state.start;$("customWrap").hidden=state.start!=="custom";$("customStart").value=state.custom||"";$("chunk").value=state.chunk;
-if(state.items.length&&state.items.every(p=>p.ornek))state.items=optimize(state.items,null);
 initMap();
 fillIlce();
 render();
 checkHash();
 veriBaslat();
 gunlukKayit();
-snapAll();
 })();
 </script>
 </body>
