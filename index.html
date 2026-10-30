@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Kayseri Parsel Rota</title>
 <meta name="theme-color" content="#134A40">
-<meta name="version" content="r49">
+<meta name="version" content="r50">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
@@ -313,7 +313,7 @@ summary{cursor:pointer;font-weight:700}
 "use strict";
 const ILCELER_STATIK=["Akkışla","Bünyan","Develi","Felahiye","Hacılar","İncesu","Kocasinan","Melikgazi","Özvatan","Pınarbaşı","Sarıoğlan","Sarız","Talas","Tomarza","Yahyalı","Yeşilhisar"];
 const MERKEZ={lat:38.7205,lon:35.4826};
-const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", LSKEY="kpr-v3", SURUM="r49 · 30.10.2026 22:05";
+const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", LSKEY="kpr-v3", SURUM="r50 · 30.10.2026 22:50";
 const $=id=>document.getElementById(id);
 
 /* ---------- Giris kaydi (Google Formu) ---------- */
@@ -641,7 +641,7 @@ async function listeYukle(){ // kilit acilinca sifreli listeyi coz; eski surumde
 veriBaslatSonra.push(()=>{listeYukle();});
 async function listeKilitle(){ // son hali sifreli kaydedilir, sonra ekrandaki ve bellekteki parsel bilgileri silinir
   if(listeAcik&&veri.key)await listeKaydet();
-  listeAcik=false;listeAciliyor=false;state.items=[];
+  listeAcik=false;listeAciliyor=false;state.items=[];ils.aranan="";
   Object.assign(routeCache,{key:null,line:null,legs:null,km:null,dk:null,fail:{},err:""});
   liveClose();if(live.lyr)live.lyr.clearLayers();if(live.routeLyr)live.routeLyr.clearLayers();
   Object.assign(live,{p:null,stops:[],legs:[],legErr:[],secenek:[],graph:null});
@@ -734,6 +734,8 @@ function initMap(){
   L.control.layers({"Uydu":sat,"Harita":osm},null,{position:"topright"}).addTo(map);
   const FS=L.Control.extend({onAdd:function(){const b=L.DomUtil.create("button","fs-btn");b.type="button";b.id="fsBtn";b.title="Tam ekran";b.setAttribute("aria-label","Tam ekran");b.textContent="⛶";L.DomEvent.disableClickPropagation(b);L.DomEvent.on(b,"click",toggleFS);return b;}});
   new FS({position:"topleft"}).addTo(map);
+  const ip=map.createPane("ilcePane");ip.style.zIndex=350;ip.style.pointerEvents="none"; // ilce sinirlari parsellerin altinda, dokunmayi engellemez
+  ils.lyr=L.layerGroup().addTo(map);
   parcelLayer=L.layerGroup().addTo(map);routeLayer=L.layerGroup().addTo(map);
   map.on("click",e=>haritaDokun(map,e));
   if(COARSE){const c=map.getContainer();const h=document.createElement("div");h.className="two-hint";h.textContent="Haritayı iki parmakla kaydırın ve yakınlaştırın";c.appendChild(h);let t=null;
@@ -786,6 +788,51 @@ function drawMap(act,sp){
   }
   if(me&&meMarker)meMarker.addTo(routeLayer);
   if(needFit&&bounds.length){map.fitBounds(bounds,{padding:[24,24],maxZoom:16});needFit=false;}
+  ilsGuncelle();
+}
+
+/* ---------- Ilce sinirlari: OpenStreetMap idari sinirlari (acik veri; ilk kullanimda telefona kaydedilir, internetsiz de cizilir) ---------- */
+// Haritada: listedeki parsellerin ilceleri + Parsel Ara ile aranan ilce. Kilitliyken cizilmez.
+const ILS_DOSYA="d/r/"+fnv("ilce:1")+".bin", ILS_RENK="#FFEB3B";
+const ils={veri:null,yukleniyor:null,aranan:"",cizili:null,lyr:null};
+function ilsYukle(){ // {normAd: {ad, halkalar, bb}}; telefonda da yoksa ve internet yoksa null
+  if(ils.veri)return Promise.resolve(ils.veri);
+  if(!ils.yukleniyor)ils.yukleniyor=(async()=>{
+    const ck="ils@"+ILS_DOSYA;let buf=await idbGet(ck);
+    if(!buf&&navigator.onLine){try{const r=await fetch(ILS_DOSYA,{cache:"no-cache",signal:AbortSignal.timeout(30000)});if(r.ok){buf=await r.arrayBuffer();await idbPut(ck,buf);}}catch(e){}}
+    if(!buf)return null;
+    const d=JSON.parse(await gunzipText(new Uint8Array(buf))),o={};
+    for(const f of d.i){
+      let a0=90,a1=-90,b0=180,b1=-180;
+      const halkalar=f.h.map(h=>{const pts=[];let la=0,lo=0;
+        for(let j=0;j+1<h.length;j+=2){la+=h[j];lo+=h[j+1];const y=la/1e5,x=lo/1e5;pts.push([y,x]);if(y<a0)a0=y;if(y>a1)a1=y;if(x<b0)b0=x;if(x>b1)b1=x;}
+        return pts;});
+      o[normName(f.a)]={ad:f.a,halkalar,bb:[[a0,b0],[a1,b1]]};
+    }
+    ils.veri=o;return o;
+  })().catch(()=>null).finally(()=>{ils.yukleniyor=null;});
+  return ils.yukleniyor;
+}
+function ilsAdlar(){
+  const s=new Set();
+  if(kilitAcik()){state.items.forEach(p=>{if(p.ilce&&!p.ornek)s.add(normName(p.ilce));});if(ils.aranan)s.add(ils.aranan);}
+  return [...s].sort();
+}
+async function ilsGuncelle(){ // cizili ilceler degistiyse yeniden ciz
+  if(!map||!ils.lyr)return;
+  const adlar=ilsAdlar(),anahtar=adlar.join("|");
+  if(anahtar===ils.cizili)return;
+  if(adlar.length&&!ils.veri){if(!(await ilsYukle()))return;if(ilsAdlar().join("|")!==anahtar||anahtar===ils.cizili)return;}
+  ils.lyr.clearLayers();ils.cizili=anahtar;
+  for(const a of adlar){const f=ils.veri&&ils.veri[a];if(!f)continue;
+    L.polygon(f.halkalar,{pane:"ilcePane",color:"#000",weight:6,opacity:.35,fill:false,interactive:false}).addTo(ils.lyr);
+    L.polygon(f.halkalar,{pane:"ilcePane",color:ILS_RENK,weight:3,opacity:.95,fill:false,interactive:false}).addTo(ils.lyr);}
+}
+async function ilsAra(ad){ // Parsel Ara: ilcenin siniri cizilir ve harita ilcenin tamamina yaklasir
+  ils.aranan=normName(ad);
+  const v=await ilsYukle();await ilsGuncelle();
+  const f=v&&v[ils.aranan];
+  if(f&&map&&kilitAcik())map.fitBounds(f.bb,{padding:[12,12]});
 }
 
 /* ---------- Hazir yol agi: OSM + uydu tespiti tarla yollari (karolar telefonda saklanir, cevrimdisi calisir) ---------- */
@@ -794,7 +841,7 @@ const RN_W_UZAK={0:1.0,9:1.0,1:1.1,2:1.3,3:2.0,4:2.8,5:2.2,6:2.8,7:1.8,8:2.0};  
 const RN_W_YAKIN={0:1.0,9:1.0,1:1.0,2:1.0,3:1.05,4:1.2,5:1.1,6:1.4,7:1.0,8:1.05}; // parsele RN_YAKIN_M kala: en kisa yol, tarla yollari serbest
 const RN_V={0:70,9:90,1:50,2:30,3:20,4:10,5:15,6:8,7:15,8:20};                    // tahmini hiz km/sa
 const RN_YAKIN_M=4000, RN_YURU=6, RN_YAKLAS=4, RN_HUCRE=400, RN_UZUN_KM=15, RN_GIRIS_KM=4;
-const RN_ATIF="Yol ağı © OpenStreetMap katkıcıları, Microsoft (ODbL)";
+const RN_ATIF="Yol ağı ve ilçe sınırları © OpenStreetMap katkıcıları, Microsoft (ODbL)";
 const rn={ver:null,nesil:0,loaded:new Set(),bos:new Set(),major:false,nLa:[],nLo:[],nKey:new Map(),adj:[],E:[],grid:new Map(),ekey:new Set(),team:new Set(),karoE:new Map()};
 const rnBekleyen=new Map();
 let rnVerSorgu=null;
@@ -1266,6 +1313,7 @@ $("findBtn").onclick=async()=>{
   if(kilitli($("addMsg")))return;
   const f=readForm();
   if(!f.ilce){show($("addMsg"),"Önce ilçe seçin.","err");return;}
+  ilsAra(f.ilce);
   if(!f.ada||!f.parsel){show($("addMsg"),"Ada ve parsel numarasını yazın.","err");return;}
   const e=veriEntry(f.ilce);
   if(!e){show($("addMsg"),`${f.ilce} ilçesi ekip verisinde yok. Konumu elle girebilirsiniz.`,"err");return;}
@@ -2029,6 +2077,7 @@ $("offBtn").onclick=async()=>{
       cat.parts={};cat.sira=[];}
     if(!isFinite(minLa))throw new Error("ilçe sınırı hesaplanamadı");
     const bb={minLa:minLa-0.01,maxLa:maxLa+0.01,minLo:minLo-0.01,maxLo:maxLo+0.01};
+    await ilsYukle(); // ilce sinirlari (tek kucuk dosya, tum ilceler)
     // 2) yol agi: hazir karolar (OSM + uydu tespiti tarla yollari) ve il geneli ana yollar
     await rnSurumSor();if(!(await rnHazir()))throw new Error("yol ağı sürüm bilgisi alınamadı");
     const tl=rnKarolar([{lat:bb.minLa,lon:bb.minLo},{lat:bb.maxLa,lon:bb.maxLo}],0.03);
