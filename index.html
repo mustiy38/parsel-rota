@@ -307,7 +307,7 @@ summary{cursor:pointer;font-weight:700}
 "use strict";
 const ILCELER_STATIK=["Akkışla","Bünyan","Develi","Felahiye","Hacılar","İncesu","Kocasinan","Melikgazi","Özvatan","Pınarbaşı","Sarıoğlan","Sarız","Talas","Tomarza","Yahyalı","Yeşilhisar"];
 const MERKEZ={lat:38.7205,lon:35.4826};
-const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", SURUM="r47 · 30.10.2026 19:55";
+const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", SURUM="r48 · 30.10.2026 21:45";
 const $=id=>document.getElementById(id);
 
 /* ---------- Giris kaydi (Google Formu) ---------- */
@@ -402,7 +402,7 @@ $("pwBtn").onclick=async()=>{
   }catch(e){veri.key=null;show($("addMsg"),"Parola yanlış.","err");kayit("yanlis-parola");}
   finally{$("pwBtn").disabled=false;}
 };
-$("veriLock").onclick=()=>{veri.key=null;veri.ilce={};veri.manifest.ilceler=[];veri.manifest.toplam=0;try{localStorage.removeItem(KKEY);}catch(e){}fillIlce();veriUI();};
+$("veriLock").onclick=()=>{rnReset();veri.key=null;veri.ilce={};veri.manifest.ilceler=[];veri.manifest.toplam=0;try{localStorage.removeItem(KKEY);}catch(e){}fillIlce();veriUI();};
 async function loadBlob(path,etiket){
   const ck=path+"@"+(veri.manifest.salt||veri.manifest.surum||"");
   const taze=async()=>{const r=await fetch(path,{cache:"no-cache"});if(!r.ok)throw new Error("Veri dosyası alınamadı: "+etiket);return await r.arrayBuffer();};
@@ -694,10 +694,10 @@ function drawMap(act,sp){
 }
 
 /* ---------- Hazir yol agi: OSM + uydu tespiti tarla yollari (karolar telefonda saklanir, cevrimdisi calisir) ---------- */
-// Sinif: 0 ana yol, 1 koy yolu, 2 yerlesim/servis, 3 tarla yolu (OSM), 4 patika, 5 tarla yolu (uydu tespiti), 6 kisa baglanti, 7 ekip yolu, 9 otoyol
-const RN_W_UZAK={0:1.0,9:1.0,1:1.1,2:1.3,3:2.0,4:2.8,5:2.2,6:2.8,7:1.8};    // parselden uzakta: asfalt tercih edilir (sureye yakin)
-const RN_W_YAKIN={0:1.0,9:1.0,1:1.0,2:1.0,3:1.05,4:1.2,5:1.1,6:1.4,7:1.0}; // parsele RN_YAKIN_M kala: en kisa yol, tarla yollari serbest
-const RN_V={0:70,9:90,1:50,2:30,3:20,4:10,5:15,6:8,7:15};                    // tahmini hiz km/sa
+// Sinif: 0 ana yol, 1 koy yolu, 2 yerlesim/servis, 3 tarla yolu (OSM), 4 patika, 5 tarla yolu (uydu tespiti), 6 kisa baglanti, 7 ekip yolu, 8 kadastro yolu (sifreli), 9 otoyol
+const RN_W_UZAK={0:1.0,9:1.0,1:1.1,2:1.3,3:2.0,4:2.8,5:2.2,6:2.8,7:1.8,8:2.0};    // parselden uzakta: asfalt tercih edilir (sureye yakin)
+const RN_W_YAKIN={0:1.0,9:1.0,1:1.0,2:1.0,3:1.05,4:1.2,5:1.1,6:1.4,7:1.0,8:1.05}; // parsele RN_YAKIN_M kala: en kisa yol, tarla yollari serbest
+const RN_V={0:70,9:90,1:50,2:30,3:20,4:10,5:15,6:8,7:15,8:20};                    // tahmini hiz km/sa
 const RN_YAKIN_M=4000, RN_YURU=6, RN_YAKLAS=4, RN_HUCRE=400, RN_UZUN_KM=15, RN_GIRIS_KM=4;
 const RN_ATIF="Yol ağı © OpenStreetMap katkıcıları, Microsoft (ODbL)";
 const rn={ver:null,nesil:0,loaded:new Set(),bos:new Set(),major:false,nLa:[],nLo:[],nKey:new Map(),adj:[],E:[],grid:new Map(),ekey:new Set(),team:new Set(),karoE:new Map()};
@@ -773,13 +773,46 @@ async function rnKaroYukle(key){
   const buf=await rnHam(fnv("r"+key));
   if(buf===null)return false;
   if(rn.loaded.has(key)||rn.bos.has(key))return true;
-  if(!buf){rn.bos.add(key);return true;}
-  const d=JSON.parse(await gunzipText(new Uint8Array(buf)));
-  if(rn.loaded.has(key))return true;
+  const d=buf?JSON.parse(await gunzipText(new Uint8Array(buf))):null;
+  let kd=null;try{kd=await kyVeri(key);}catch(e){kd=null;}
+  if(rn.loaded.has(key)||rn.bos.has(key))return true;
+  if(!d&&!kd){rn.bos.add(key);return true;}
   const yeni=[];
-  for(const [c,la,lo] of rnDecode(d)){const ei=rnAddEdge(c,la,lo);if(ei>=0)yeni.push(ei);}
+  if(d)for(const [c,la,lo] of rnDecode(d)){const ei=rnAddEdge(c,la,lo);if(ei>=0)yeni.push(ei);}
+  if(kd){for(const [c,la,lo] of rnDecode(kd)){const ei=rnAddEdge(c,la,lo);if(ei>=0)yeni.push(ei);}
+    for(const p of (kd.b||[]))rnBaglaKy(p[0],p[1]);}
   rn.loaded.add(key);rn.karoE.set(key,yeni);
   return true;
+}
+/* Kadastro yollari: parsel sinirlari arasindaki yol bosluklarindan cikarilan orta cizgiler; sifreli, parola girilmisse yuklenir */
+const KY_SURUM="c1",ky={klasor:null};
+async function kyYol(key){if(!ky.klasor)ky.klasor="d/"+(await snrAd("kyol")).slice(0,10);return ky.klasor+"/"+(await snrAd(KY_SURUM+":"+key)).slice(0,12)+".bin";}
+async function kyIndir(key){ // sifreli karoyu telefona kaydeder (varsa inmez); inen bayt
+  const yol=await kyYol(key),ck=yol+"@"+veri.manifest.salt;
+  if((await idbGet(ck))!==undefined)return 0;
+  const r=await fetch(yol,{cache:"no-cache",signal:AbortSignal.timeout(30000)});
+  if(r.status===404){await idbPut(ck,0);return 0;}
+  if(!r.ok)throw new Error("kadastro yolu dosyası alınamadı ("+r.status+")");
+  const b=await r.arrayBuffer();await idbPut(ck,b);return b.byteLength;
+}
+async function kyVeri(key){ // cozulmus karo; yoksa null
+  if(!veriHazir())return null;
+  const yol=await kyYol(key),ck=yol+"@"+veri.manifest.salt;
+  let b=await idbGet(ck);
+  if(b===0)return null;
+  if(b===undefined){if(!navigator.onLine)return null;try{await kyIndir(key);}catch(e){return null;}b=await idbGet(ck);if(!b)return null;}
+  try{return JSON.parse(await gunzipText(await decryptBytes(new Uint8Array(b))));}catch(e){return null;}
+}
+function rnBaglaKy(la5,lo5){ // kadastro yolu ucunu 50 m icindeki baska bir yola baglar
+  const a=rn.nKey.get(la5*1e7+lo5);if(a===undefined)return;
+  const y=rnYakin({lat:la5/1e5,lon:lo5/1e5},50,12).find(c=>{const E=rn.E[c.e];return E.u!==a&&E.v!==a;});
+  if(!y)return;
+  const E=rn.E[y.e],q=rnNode(Math.round(y.lat*1e5),Math.round(y.lon*1e5));
+  if(q!==E.u&&q!==E.v){
+    const to5=arr=>[Int32Array.from(arr.map(p=>Math.round(p[0]*1e5))),Int32Array.from(arr.map(p=>Math.round(p[1]*1e5)))];
+    const [l1,o1]=to5(rnParca(E,y.along,0)),[l2,o2]=to5(rnParca(E,y.along,E.len));rnAddEdge(E.c,l1,o1);rnAddEdge(E.c,l2,o2);
+  }
+  if(q!==a)rnAddEdge(6,Int32Array.from([la5,Math.round(y.lat*1e5)]),Int32Array.from([lo5,Math.round(y.lon*1e5)]));
 }
 function rnKaro(key){ // key "la:lo" (0,1 derecelik karo)
   if(rn.loaded.has(key)||rn.bos.has(key))return Promise.resolve(true);
@@ -978,8 +1011,8 @@ async function yolNoktasiRn(p){ // parsele en yakin yol noktasi (tarla yollari d
   if(!(await rnHazir()))return null;
   const e1=await rnYukle([p],0.012);
   let y=rnYakin(p,1500,1)[0];
-  if(!y){const e2=await rnYukle([p],0.04);y=rnYakin(p,4000,1)[0];if(!y)return (e1||e2)?null:{lat:p.lat,lon:p.lon,m:99999,k:"rn"};}
-  return {lat:+y.lat.toFixed(6),lon:+y.lon.toFixed(6),m:Math.round(y.d),k:"rn"};
+  if(!y){const e2=await rnYukle([p],0.04);y=rnYakin(p,4000,1)[0];if(!y)return (e1||e2)?null:{lat:p.lat,lon:p.lon,m:99999,k:"rn",ky:veriHazir()};}
+  return {lat:+y.lat.toFixed(6),lon:+y.lon.toFixed(6),m:Math.round(y.d),k:"rn",ky:veriHazir()};
 }
 
 function ozetBacakCiz(leg){ // arac kismi kirmizi, yolsuz kisimlar (yurume) kesikli
@@ -1300,12 +1333,13 @@ async function yolNoktasi(p){
   return {lat:+w.location[1].toFixed(6),lon:+w.location[0].toFixed(6),m:Math.round(w.distance||0)};
 }
 let snapRunning=false;
-async function snapAll(){
+const yolGuncel=p=>p.yol&&p.yol.k==="rn"&&(p.yol.ky||!veriHazir()); // kadastro yollari acildiysa onlarla hesaplanmis olmali
+async function snapAll(tekrar){
   sinirlariGetir();
   if(snapRunning)return;snapRunning=true;
   try{
     for(const p of state.items){
-      if(!hasPos(p)||p.ornek||(p.yol&&p.yol.k==="rn"))continue;
+      if(!hasPos(p)||p.ornek||yolGuncel(p))continue;
       let y=null;try{y=await yolNoktasiRn(p);}catch(e){y=null;}
       if(y){p.yol=y;delete p.yolHata;save();render();continue;}
       if(p.yol||p.yolHata)continue;
@@ -1314,6 +1348,7 @@ async function snapAll(){
       await sleep(400);
     }
   }finally{snapRunning=false;render();}
+  if(!tekrar&&veriHazir()&&state.items.some(p=>hasPos(p)&&!p.ornek&&p.yol&&p.yol.k==="rn"&&!p.yol.ky))snapAll(true);
 }
 window.addEventListener("online",()=>{state.items.forEach(p=>{if(p.yolHata)delete p.yolHata;});snapAll();});
 
@@ -1857,7 +1892,7 @@ function lonLat2tile(lat,lon,z){const n=Math.pow(2,z);const x=Math.floor((lon+18
 function fillOffIlce(){const sel=$("offIlce");sel.innerHTML="";const arr=veri.manifest&&veri.manifest.ilceler.length?veri.manifest.ilceler.map(x=>x.ad):ILCELER_STATIK;arr.forEach(t=>sel.appendChild(new Option(t,t)));if(state.sonIlce&&[...sel.options].some(o=>o.value===state.sonIlce))sel.value=state.sonIlce;}
 async function offListe(){
   const m=(await idbGet("off-manifest"))||{};const ks=Object.keys(m);
-  $("offList").textContent=ks.length?"İndirilen: "+ks.map(k=>`${k} (${m[k].tarih}, ${m[k].mb} MB${(m[k].rn&&m[k].snr)?"":", güncel değil: yeniden indirin"})`).join(" · "):"Henüz indirilen ilçe yok.";
+  $("offList").textContent=ks.length?"İndirilen: "+ks.map(k=>`${k} (${m[k].tarih}, ${m[k].mb} MB${(m[k].rn&&m[k].snr&&m[k].ky===KY_SURUM)?"":", güncel değil: yeniden indirin"})`).join(" · "):"Henüz indirilen ilçe yok.";
   $("offSub").textContent=ks.length?`${ks.length} ilçe`:"";
 }
 let offRunning=false;
@@ -1889,12 +1924,17 @@ $("offBtn").onclick=async()=>{
         catch(err){if(!navigator.onLine)throw err;yolEksik.push(sira[i]);}}
       if(!yolEksik.length)break;
       ilerle(0.45,`${ad}: ${yolEksik.length} yol ağı parçası alınamadı, 5 sn sonra yeniden denenecek…`);await sleep(5000);}
+    // 2b) kadastro yollari (sifreli)
+    let kySay=0,kyHata=0;
+    {let i=0;ilerle(0.45,`${ad}: kadastro yolları indiriliyor…`);
+      const isci=async()=>{while(i<tl.length){const k=tl[i++];try{const n=await kyIndir(k);bayt+=n;kySay++;}catch(err){if(!navigator.onLine)throw err;kyHata++;}}};
+      await Promise.all([isci(),isci(),isci(),isci()]);}
     // 3) parsel sinirlari (haritada dokunulan parselin bilgisi, rotadaki parsellerin siniri)
     let snrSay=0,snrHata=0,snrTop=0;
     {const dz=await snrBlob("x:"+e.klasor.split("/").pop());
       const keys=dz?(dz.k||[]).concat(dz.b||[]):[];snrTop=keys.length;let i=0;
       const isci=async()=>{while(i<keys.length){const k=keys[i++];
-        try{bayt+=await snrIndir(k);snrSay++;}catch(err){if(!navigator.onLine)throw err;snrHata++;}
+        try{const n=await snrIndir(k);bayt+=n;snrSay++;}catch(err){if(!navigator.onLine)throw err;snrHata++;}
         if((snrSay+snrHata)%10===0)ilerle(0.45+0.2*(snrSay+snrHata)/keys.length,`${ad}: parsel sınırları indiriliyor (${snrSay+snrHata}/${keys.length})…`);}};
       await Promise.all([isci(),isci(),isci(),isci(),isci(),isci()]);}
     // 4) dusuk cozunurluklu uydu (EOX Sentinel-2, z10-14)
@@ -1907,13 +1947,13 @@ $("offBtn").onclick=async()=>{
         try{const r=await fetch(u,{mode:"cors",signal:AbortSignal.timeout(20000)});if(r.ok){await c.put(u,r.clone());bayt+=+(r.headers.get("content-length")||25000);uyduOk++;}else uyduHata++;}
         catch(err){uyduHata++;if(uyduHata>25&&uyduOk===0){uyduAtla=true;break;}}}}
     }catch(err){uyduAtla=true;}
-    const m=(await idbGet("off-manifest"))||{};m[ad]={tarih:new Date().toLocaleDateString("tr-TR"),mb:+(bayt/1e6).toFixed(1),tiles:tl,uydu:uyduOk,rn:rn.ver,snr:snrSay};await idbPut("off-manifest",m);
-    ilerle(1,`${ad} indirildi: ${cat.p.length} mahalle parseli, tarla yolları dahil yol ağı ${adlar.length-yolEksik.length}/${adlar.length} parça${yolEksik.length?" (eksik parçalar için daha sonra yeniden İlçeyi indir'e basın; inenler tekrar inmez)":""}, parsel sınırları ${snrSay}/${snrTop} parça${snrHata?" (eksikler için yeniden İlçeyi indir'e basın)":""}, uydu altlığı ${uyduAtla?"alınamadı (internetli kullanımda normal uydu, çevrimdışında yol ağı görünümü)":uyduOk+" karo"}. Toplam ${(bayt/1e6).toFixed(1)} MB.`);
-    $("offMsg").className=(yolEksik.length||snrHata)?"msg err":"msg ok";await offListe();
+    const m=(await idbGet("off-manifest"))||{};m[ad]={tarih:new Date().toLocaleDateString("tr-TR"),mb:+(bayt/1e6).toFixed(1),tiles:tl,uydu:uyduOk,rn:rn.ver,snr:snrSay,ky:KY_SURUM};await idbPut("off-manifest",m);
+    ilerle(1,`${ad} indirildi: ${cat.p.length} mahalle parseli, tarla ve kadastro yolları dahil yol ağı ${adlar.length-yolEksik.length}/${adlar.length} parça${kyHata?` (${kyHata} kadastro yolu parçası alınamadı)`:""}${yolEksik.length?" (eksik parçalar için daha sonra yeniden İlçeyi indir'e basın; inenler tekrar inmez)":""}, parsel sınırları ${snrSay}/${snrTop} parça${snrHata?" (eksikler için yeniden İlçeyi indir'e basın)":""}, uydu altlığı ${uyduAtla?"alınamadı (internetli kullanımda normal uydu, çevrimdışında yol ağı görünümü)":uyduOk+" karo"}. Toplam ${(bayt/1e6).toFixed(1)} MB.`);
+    $("offMsg").className=(yolEksik.length||snrHata||kyHata)?"msg err":"msg ok";await offListe();
   }catch(err){show($("offMsg"),"İndirme yarım kaldı: "+err.message+". Tekrar deneyin; inen kısımlar saklanır.","err");}
   finally{offRunning=false;$("offBtn").disabled=false;}
 };
-veriBaslatSonra.push(()=>{fillOffIlce();offListe();sinirlariGetir();});
+veriBaslatSonra.push(()=>{fillOffIlce();offListe();rnReset();routeCache.key=null;routeCache.line=null;routeCache.legs=null;snapAll();});
 
 /* ---------- Diger ---------- */
 $("ilce").onchange=()=>{$("results").hidden=true;$("goRow").hidden=true;state.sonIlce=$("ilce").value||"";save();};
