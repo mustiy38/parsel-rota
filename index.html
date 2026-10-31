@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Kayseri Parsel Rota</title>
 <meta name="theme-color" content="#134A40">
-<meta name="version" content="r57">
+<meta name="version" content="r58">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
@@ -328,7 +328,7 @@ summary{cursor:pointer;font-weight:700}
 "use strict";
 const ILCELER_STATIK=["Akkışla","Bünyan","Develi","Felahiye","Hacılar","İncesu","Kocasinan","Melikgazi","Özvatan","Pınarbaşı","Sarıoğlan","Sarız","Talas","Tomarza","Yahyalı","Yeşilhisar"];
 const MERKEZ={lat:38.7205,lon:35.4826};
-const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", LSKEY="kpr-v3", SURUM="r57 · 31.10.2026 16:30";
+const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", LSKEY="kpr-v3", SURUM="r58 · 31.10.2026 16:40";
 const $=id=>document.getElementById(id);
 
 /* ---------- Giris kaydi (Google Formu) ---------- */
@@ -1485,8 +1485,9 @@ const pKey=p=>normName(p.ilce)+"|"+normName(p.mahalle)+"|"+normNo(p.ada)+"|"+nor
 function bulDup(p){const k=pKey(p);return state.items.find(x=>!x.ornek&&pKey(x)===k)||null;}
 function dedupe(){const seen=new Set();state.items=state.items.filter(x=>{if(x.ornek)return true;const k=pKey(x);if(seen.has(k))return false;seen.add(k);return true;});}
 function autoSort(){const act=active();if(act.length<2)return;const ord=optimize(act,startPoint());const others=state.items.filter(p=>!act.includes(p));state.items=ord.concat(others);}
-function ekle(p){if(kilitli($("addMsg")))return false;const d=bulDup(p);if(d){const sira=active().indexOf(d)+1;show($("addMsg"),`Bu parsel zaten listede${sira?` (sıra ${sira})`:""}: ${label(d)}`,"err");$("goBtn").onclick=()=>liveOpen(d);$("goRow").hidden=!hasPos(d);return false;}
-  dropSamples();state.items.push(p);autoSort();needFit=true;save();render();snapAll();return true;}
+function ekle(p,sabit){ // sabit: harita oldugu yerde kalir (haritadan eklerken yakinlik degismez)
+  if(kilitli($("addMsg")))return false;const d=bulDup(p);if(d){const sira=active().indexOf(d)+1;show($("addMsg"),`Bu parsel zaten listede${sira?` (sıra ${sira})`:""}: ${label(d)}`,"err");$("goBtn").onclick=()=>liveOpen(d);$("goRow").hidden=!hasPos(d);return false;}
+  dropSamples();state.items.push(p);autoSort();if(!sabit)needFit=true;save();render();snapAll();return true;}
 $("findBtn").onclick=async()=>{
   if(kilitli($("addMsg")))return;
   const f=readForm();
@@ -2253,7 +2254,7 @@ async function snrListeyeEkle(f,btn){
   if(!hasPos(p)){const c=centroid(closeRing(f.halkalar[0].map(q=>[q[1],q[0]])));p.lat=+c.lat.toFixed(6);p.lon=+c.lon.toFixed(6);}
   if(p.alan==null&&f.alan)p.alan=f.alan;if(!p.nitelik&&f.nitelik)p.nitelik=f.nitelik;
   const h=snrHalka(f);p.ring=h.ring;if(h.halkalar)p.halkalar=h.halkalar;p.sinir="ok";
-  const ok=ekle(p);
+  const ok=ekle(p,true);
   btn.textContent=ok?`Listeye eklendi · sıra ${active().indexOf(p)+1}`:(kilitAcik()?"Zaten listede":"Veri kilitli");
   if(live.map&&!$("live").hidden)drawStops();
 }
