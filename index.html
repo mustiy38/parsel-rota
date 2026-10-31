@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Kayseri Parsel Rota</title>
 <meta name="theme-color" content="#134A40">
-<meta name="version" content="r54">
+<meta name="version" content="r55">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
@@ -327,13 +327,13 @@ summary{cursor:pointer;font-weight:700}
 "use strict";
 const ILCELER_STATIK=["Akkışla","Bünyan","Develi","Felahiye","Hacılar","İncesu","Kocasinan","Melikgazi","Özvatan","Pınarbaşı","Sarıoğlan","Sarız","Talas","Tomarza","Yahyalı","Yeşilhisar"];
 const MERKEZ={lat:38.7205,lon:35.4826};
-const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", LSKEY="kpr-v3", SURUM="r54 · 31.10.2026 00:40";
+const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", LSKEY="kpr-v3", SURUM="r55 · 31.10.2026 08:55";
 const $=id=>document.getElementById(id);
 
 /* ---------- Giris kaydi (Google Formu) ---------- */
 const FORM_URL="https://docs.google.com/forms/d/e/1FAIpQLSd3fmkTfItBVUDalG4LagfDnyX9Vt1WipXeF8LM10wcANVg1g/formResponse";
 const FORM_F={cihaz:"entry.822298983",olay:"entry.947048218",surum:"entry.1933127553",
-  telefon:""}; // formdaki "Telefon modeli" sorusunun alan kodu (entry.xxxxx); bos ise telefon bilgisi gonderilmez
+  telefon:"entry.952102146"}; // formdaki "Telefon modeli" sorusu (bos birakilirsa telefon bilgisi gonderilmez)
 function cihazId(){let id=null;try{id=localStorage.getItem("kpr-cihaz");}catch(e){}
   if(!id){const h="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";id="";for(let i=0;i<6;i++)id+=h[Math.floor(Math.random()*h.length)];try{localStorage.setItem("kpr-cihaz",id);}catch(e){}}
   return id;}
@@ -383,8 +383,8 @@ async function kayit(olay){
     if(FORM_F.telefon)b.append(FORM_F.telefon,await telefonBilgisi());
     fetch(FORM_URL,{method:"POST",mode:"no-cors",body:b,keepalive:true}).catch(()=>{});}catch(e){}
 }
-function gunlukKayit(){const g=new Date().toISOString().slice(0,10);let son=null;try{son=localStorage.getItem("kpr-son-acilis2");}catch(e){}
-  if(son!==g){try{localStorage.setItem("kpr-son-acilis2",g);}catch(e){}kayit("acilis");}}
+function gunlukKayit(){const g=new Date().toISOString().slice(0,10);let son=null;try{son=localStorage.getItem("kpr-son-acilis3");}catch(e){}
+  if(son!==g){try{localStorage.setItem("kpr-son-acilis3",g);}catch(e){}kayit("acilis");}}
 
 /* ---------- Yardimcilar ---------- */
 const asciiUp=s=>String(s||"").toLocaleUpperCase("tr-TR").replace(/İ/g,"I").replace(/Ş/g,"S").replace(/Ğ/g,"G").replace(/Ü/g,"U").replace(/Ö/g,"O").replace(/Ç/g,"C");
