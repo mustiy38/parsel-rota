@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Kayseri Parsel Rota</title>
 <meta name="theme-color" content="#134A40">
-<meta name="version" content="r56">
+<meta name="version" content="r57">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
@@ -106,6 +106,8 @@ ul.res button .d{font-size:13px;color:var(--label);font-weight:600;text-align:ri
 .mah-liste button .d{font-size:12px;color:var(--label);font-weight:600;text-align:right}
 .mah-liste button.sec{outline:2px solid var(--gold);outline-offset:-2px}
 .mah-etiket{width:auto!important;height:auto!important;background:none;border:none}
+.alt-etiket{width:auto!important;height:auto!important;background:none;border:none}
+.alt-etiket span{display:inline-block;transform:translate(-50%,-50%);white-space:nowrap;background:#78909C;color:#fff;font:700 13px var(--f-body);padding:5px 10px;border-radius:9px;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5);cursor:pointer}
 .mah-etiket span{display:inline-block;transform:translate(-50%,-50%);white-space:nowrap;background:rgba(0,0,0,.6);color:#FFEB3B;font:700 13px var(--f-body);padding:2px 8px;border-radius:8px}
 .atif-btn{font-family:inherit;font-size:11px;font-weight:600;line-height:1.6;background:rgba(255,255,255,.85);color:#134A40;border:none;border-radius:10px;padding:1px 8px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.3)}
 .two-hint{position:absolute;inset:0;z-index:900;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45);color:#fff;font:700 16px var(--f-body);text-align:center;padding:16px;pointer-events:none;opacity:0;transition:opacity .25s}
@@ -310,7 +312,6 @@ summary{cursor:pointer;font-weight:700}
     <button type="button" id="liveVoice" class="grow">Ses: açık</button>
     <button type="button" id="liveDraw" class="grow">Yol çiz</button>
     <button type="button" id="liveIz" class="grow gold" hidden>Geldiğim yolu kaydet</button>
-    <button type="button" id="liveAlt" class="grow" hidden>Diğer rota</button>
     <button type="button" id="liveNext" class="grow gold" hidden>Gidildi, sıradaki durağa geç</button>
   </div>
   <div class="livebtns row" id="liveBtnsDraw" hidden>
@@ -327,7 +328,7 @@ summary{cursor:pointer;font-weight:700}
 "use strict";
 const ILCELER_STATIK=["Akkışla","Bünyan","Develi","Felahiye","Hacılar","İncesu","Kocasinan","Melikgazi","Özvatan","Pınarbaşı","Sarıoğlan","Sarız","Talas","Tomarza","Yahyalı","Yeşilhisar"];
 const MERKEZ={lat:38.7205,lon:35.4826};
-const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", LSKEY="kpr-v3", SURUM="r56 · 31.10.2026 11:30";
+const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", LSKEY="kpr-v3", SURUM="r57 · 31.10.2026 16:30";
 const $=id=>document.getElementById(id);
 
 /* ---------- Giris kaydi (Google Formu) ---------- */
@@ -1889,7 +1890,7 @@ function liveInit(){
   atifKur(live.map,[[sat,"Esri"],[eox,"EOX"],[osm,"© OSM"]]);
   live.tracks=L.layerGroup().addTo(live.map);team.lyr=L.layerGroup().addTo(live.map);live.routeLyr=L.layerGroup().addTo(live.map);live.lyr=L.layerGroup().addTo(live.map);draw.lyr=L.layerGroup().addTo(live.map);
   live.map.on("dragstart",()=>{if(live.follow){live.follow=false;followUI();}});
-  live.map.on("click",e=>{if(!draw.on)haritaDokun(live.map,e);});
+  live.map.on("click",e=>{if(draw.on)return;if(altDokun(e))return;haritaDokun(live.map,e);});
   live.map.on("click",e=>{if(!draw.on)return;draw.pts.push([e.latlng.lat,e.latlng.lng]);drawRender();$("liveSub").textContent=`${draw.pts.length} nokta işaretlendi. Devam edin ya da Yolu kaydet deyin.`;});
 }
 /* ---------- Canli haritada hazir yol agi cizimi ---------- */
@@ -1976,26 +1977,49 @@ function drawStops(){
     L.marker([q.lat,q.lon],{icon:L.divIcon({className:"",html:`<div class="${cls}">${harf(i)}</div>`,iconSize:[sz,sz],iconAnchor:[sz/2,sz/2]})}).addTo(live.lyr).bindPopup(harf(i)+" · "+esc(label(q)));
     if(q.ring&&q.ring.length>2)snrCiz(q,live.lyr);});
 }
-/* ---------- Diger rotalar: haritada gri cizilir, dugmeyle ya da cizgiye dokunarak secilir ---------- */
-function liveSecenek(leg){live.secenek=leg?[leg].concat(leg.alts||[]):[];live.secIdx=0;liveAltUI();}
-function liveAltUI(){
-  const b=$("liveAlt"),S=live.secenek||[];b.hidden=S.length<2;
-  if(S.length>1){const fark=S[live.secIdx].total-S[0].total;
-    b.textContent=live.secIdx===0?`Diğer rota (${S.length-1})`:`Rota ${live.secIdx+1}/${S.length} · ${fark>=0?"+":"-"}${fmt(Math.abs(fark)/1000)} km`;}
-}
+/* ---------- Diger rotalar: haritada gri cizilir; gri cizgiye ya da uzerindeki km etiketine dokununca secilir ---------- */
+const ALT_DOKUN_PX=28; // dokunma payi (piksel): parmakla gri rotanin yakinina dokunmak yeter
+function liveSecenek(leg){live.secenek=leg?[leg].concat(leg.alts||[]):[];live.secIdx=0;}
+function altEtiket(k){const S=live.secenek,fark=S[k].total-S[0].total;return k===0?"en kısa":`${fark>=0?"+":"-"}${fmt(Math.abs(fark)/1000)} km`;}
 function liveAltSec(k){
-  const S=live.secenek||[];if(S.length<2||draw.on)return;
-  live.secIdx=(k==null)?(live.secIdx+1)%S.length:k;
-  const leg=S[live.secIdx];live.legs[live.cur]=leg;live.offCount=0;live.said={};
-  liveAltUI();drawAllLegs();liveTick();
+  const S=live.secenek||[];if(S.length<2||draw.on||k===live.secIdx)return;
+  live.secIdx=k;
+  const leg=S[k];live.legs[live.cur]=leg;live.offCount=0;live.said={};
+  drawAllLegs();liveTick();
   const fark=leg.total-S[0].total;
-  konus(live.secIdx===0?"En kısa rota seçildi.":`Diğer rota seçildi, ${fmt(Math.abs(fark)/1000)} kilometre daha ${fark>=0?"uzun":"kısa"}.`);
+  konus(k===0?"En kısa rota seçildi.":`Diğer rota seçildi, ${fmt(Math.abs(fark)/1000)} kilometre daha ${fark>=0?"uzun":"kısa"}.`);
+}
+function altYolPts(leg){const n=leg.pts.length;return leg.pts.slice(0,leg.tail>8?n-1:n);}
+function altEtiketYeri(pts,ana){ // etiket: secili rotadan en uzak nokta (rotalarin ayristigi yer)
+  if(!ana||ana.length<2)return pts[Math.floor(pts.length/2)];
+  const kx=111320*Math.cos(pts[0][0]*Math.PI/180),ky=110574,adim=Math.max(1,Math.floor(ana.length/150));
+  const A=[];for(let i=0;i<ana.length;i+=adim)A.push([ana[i][1]*kx,ana[i][0]*ky]);
+  let en=pts[Math.floor(pts.length/2)],ed=-1;const padim=Math.max(1,Math.floor(pts.length/80));
+  for(let i=0;i<pts.length;i+=padim){const x=pts[i][1]*kx,y=pts[i][0]*ky;let d=Infinity;
+    for(const a of A){const dx=a[0]-x,dy=a[1]-y;const q=dx*dx+dy*dy;if(q<d)d=q;}
+    if(d>ed){ed=d;en=pts[i];}}
+  return en;
 }
 function drawAlts(){
-  (live.secenek||[]).forEach((leg,k)=>{if(k===live.secIdx||!leg)return;
-    const n=leg.pts.length,pts=leg.pts.slice(0,leg.tail>8?n-1:n);if(pts.length<2)return;
+  const S=live.secenek||[];if(S.length<2)return;
+  const ana=S[live.secIdx]?altYolPts(S[live.secIdx]):null;
+  S.forEach((leg,k)=>{if(k===live.secIdx||!leg)return;
+    const pts=altYolPts(leg);if(pts.length<2)return;
     L.polyline(pts,{color:"#FFFFFF",weight:9,opacity:.3,interactive:false}).addTo(live.routeLyr);
-    L.polyline(pts,{color:"#78909C",weight:4,opacity:.95}).on("click",()=>liveAltSec(k)).addTo(live.routeLyr);});
+    L.polyline(pts,{color:"#78909C",weight:4,opacity:.95,interactive:false}).addTo(live.routeLyr);
+    L.marker(altEtiketYeri(pts,ana),{icon:L.divIcon({className:"alt-etiket",html:`<span>${esc(altEtiket(k))}</span>`,iconSize:null}),keyboard:false,zIndexOffset:500})
+      .on("click",()=>liveAltSec(k)).addTo(live.routeLyr);});
+}
+function altDokun(e){ // haritaya dokunulan yerin yakinindaki gri rota: secilir ve true doner
+  const S=live.secenek||[];if(S.length<2||!live.map)return false;
+  const P=e.containerPoint;let enK=-1,enD=ALT_DOKUN_PX;
+  S.forEach((leg,k)=>{if(k===live.secIdx||!leg)return;
+    const pts=altYolPts(leg);let onceki=null;
+    for(let i=0;i<pts.length;i++){const q=live.map.latLngToContainerPoint(pts[i]);
+      if(onceki){const d=L.LineUtil.pointToSegmentDistance(P,onceki,q);if(d<enD){enD=d;enK=k;}}
+      onceki=q;}});
+  if(enK<0)return false;
+  liveAltSec(enK);return true;
 }
 function drawAllLegs(){
   live.routeLyr.clearLayers();drawAlts();
@@ -2031,8 +2055,8 @@ async function liveRecalc(all){
     live.legs[cur]=await computeLeg(me,st[cur],prog,true);
     if(live.stops!==st)return;
     live.offCount=0;live.said={};liveSecenek(live.legs[cur]);liveAgCiz();drawAllLegs();
-    if(live.first){live.first=false;live.map.fitBounds(live.legs[cur].pts,{padding:[40,40],maxZoom:17});}
-    const t=live.legs[cur].total;konus(`${st.length>1?harf(cur)+" durağına ":""}rota hazır, ${t>=1000?fmt(t/1000)+" kilometre":fmtInt(t)+" metre"}.`);
+    if(live.first){live.first=false;let b=L.latLngBounds(live.legs[cur].pts);(live.legs[cur].alts||[]).forEach(a=>b.extend(L.latLngBounds(a.pts)));live.map.fitBounds(b,{padding:[40,40],maxZoom:17});} // diger rotalar da gorunsun
+    const t=live.legs[cur].total,ns=(live.secenek||[]).length-1;konus(`${st.length>1?harf(cur)+" durağına ":""}rota hazır, ${t>=1000?fmt(t/1000)+" kilometre":fmtInt(t)+" metre"}.${ns>0?` Haritada gri çizgili ${ns} başka rota var; dokunarak seçebilirsiniz.`:""}`);
     liveTick();
     if(all!==false){
       for(let tur=0;tur<2;tur++){
@@ -2098,7 +2122,6 @@ $("liveVoice").onclick=()=>{live.voice=!live.voice;voiceUI();if(live.voice)konus
 $("liveNext").onclick=liveNextStop;
 $("liveDraw").onclick=drawStart;
 $("liveIz").onclick=izKaydet;
-$("liveAlt").onclick=()=>liveAltSec();
 $("drawUndo").onclick=()=>{draw.pts.pop();drawRender();};
 $("drawSave").onclick=drawSave;
 $("drawCancel").onclick=drawStop;
