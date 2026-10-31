@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Kayseri Parsel Rota</title>
 <meta name="theme-color" content="#134A40">
-<meta name="version" content="r55">
+<meta name="version" content="r56">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
@@ -327,7 +327,7 @@ summary{cursor:pointer;font-weight:700}
 "use strict";
 const ILCELER_STATIK=["Akkışla","Bünyan","Develi","Felahiye","Hacılar","İncesu","Kocasinan","Melikgazi","Özvatan","Pınarbaşı","Sarıoğlan","Sarız","Talas","Tomarza","Yahyalı","Yeşilhisar"];
 const MERKEZ={lat:38.7205,lon:35.4826};
-const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", LSKEY="kpr-v3", SURUM="r55 · 31.10.2026 08:55";
+const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", LSKEY="kpr-v3", SURUM="r56 · 31.10.2026 11:30";
 const $=id=>document.getElementById(id);
 
 /* ---------- Giris kaydi (Google Formu) ---------- */
@@ -1011,9 +1011,10 @@ function mahSifirla(){mahPanelKapat();if(mah.lyr)mah.lyr.clearLayers();mah.secil
 /* ---------- Hazir yol agi: OSM + uydu tespiti tarla yollari (karolar telefonda saklanir, cevrimdisi calisir) ---------- */
 // Sinif: 0 ana yol, 1 koy yolu, 2 yerlesim/servis, 3 tarla yolu (OSM), 4 patika, 5 tarla yolu (uydu tespiti), 6 kisa baglanti, 7 ekip yolu, 8 kadastro yolu (sifreli), 9 otoyol
 const RN_W_UZAK={0:1.0,9:1.0,1:1.1,2:1.3,3:2.0,4:2.8,5:2.2,6:2.8,7:1.8,8:2.0};    // parselden uzakta: asfalt tercih edilir (sureye yakin)
-const RN_W_YAKIN={0:1.0,9:1.0,1:1.0,2:1.0,3:1.05,4:1.2,5:1.1,6:1.4,7:1.0,8:1.05}; // parsele RN_YAKIN_M kala: en kisa yol, tarla yollari serbest
+const RN_W_YAKIN={0:1.0,9:1.0,1:1.0,2:1.0,3:1.05,4:1.2,5:1.1,6:1.4,7:1.0,8:1.3};  // parsele RN_YAKIN_M kala: en kisa yol, tarla yollari serbest (kadastro yolu yine de gercek yoldan sonra)
 const RN_V={0:70,9:90,1:50,2:30,3:20,4:10,5:15,6:8,7:15,8:20};                    // tahmini hiz km/sa
 const RN_YAKIN_M=4000, RN_YURU=6, RN_YAKLAS=4, RN_HUCRE=400, RN_UZUN_KM=15, RN_GIRIS_KM=4;
+const RN_KY_SON=1500; // kadastro yollari (tapudan cikarilan, arazide olmayabilen) yalniz parsele ya da cikis noktasina bu mesafede kullanilir
 const RN_ATIF="Yol ağı ve ilçe sınırları © OpenStreetMap katkıcıları, Microsoft (ODbL)";
 const rn={ver:null,nesil:0,loaded:new Set(),bos:new Set(),major:false,nLa:[],nLo:[],nKey:new Map(),adj:[],E:[],grid:new Map(),ekey:new Set(),team:new Set(),karoE:new Map()};
 const rnBekleyen=new Map();
@@ -1199,7 +1200,9 @@ function rnRota(from,to,ceza){ // from -> to: {pts,dk,head,tail,kav,kenar,m} ya 
   const pop=()=>{const f=hF[0],n=hN[0];const lf=hF.pop(),ln=hN.pop();if(hF.length){hF[0]=lf;hN[0]=ln;let i=0;for(;;){const l=2*i+1,r=l+1;let m=i;if(l<hF.length&&hF[l]<hF[m])m=l;if(r<hF.length&&hF[r]<hF[m])m=r;if(m===i)break;[hF[m],hF[i]]=[hF[i],hF[m]];[hN[m],hN[i]]=[hN[i],hN[m]];i=m;}}return [f,n];};
   const kx=111320*Math.cos(to.lat*Math.PI/180),ky=110574;
   const h=i=>{const dx=(rn.nLo[i]-to.lon)*kx,dy=(rn.nLa[i]-to.lat)*ky;return Math.sqrt(dx*dx+dy*dy);};
-  const w=(c,d)=>(d<RN_YAKIN_M?RN_W_YAKIN:RN_W_UZAK)[c]||1.5;
+  const hB=i=>{const dx=(rn.nLo[i]-from.lon)*kx,dy=(rn.nLa[i]-from.lat)*ky;return Math.sqrt(dx*dx+dy*dy);};
+  const w=(c,d,u)=>{if(c===8&&d>=RN_KY_SON&&u!==undefined&&hB(u)>=RN_KY_SON)return Infinity; // kadastro yolu: yalniz son yaklasma
+    return (d<RN_YAKIN_M?RN_W_YAKIN:RN_W_UZAK)[c]||1.5;};
   const cz=ei=>ceza?(ceza.get(ei)||1):1;
   const tBy=new Map();
   for(const t of tc){const E=rn.E[t.e];const ek=(n,part)=>{let a=tBy.get(n);if(!a){a=[];tBy.set(n,a);}a.push({t,part});};ek(E.u,t.along);ek(E.v,E.len-t.along);}
@@ -1215,30 +1218,31 @@ function rnRota(from,to,ceza){ // from -> to: {pts,dk,head,tail,kav,kenar,m} ya 
     if(++say>400000)break;
     const tl=tBy.get(u);
     if(tl)for(const x of tl){const E=rn.E[x.t.e];const c=g+x.part*w(E.c,0)*cz(x.t.e)+x.t.d*RN_YURU;if(c<best){best=c;bi={node:u,t:x.t};}}
-    for(const ei of rn.adj[u]){const E=rn.E[ei];const v=E.u===u?E.v:E.u;const nd=g+E.len*w(E.c,hu)*cz(ei);
+    for(const ei of rn.adj[u]){const E=rn.E[ei];const v=E.u===u?E.v:E.u;const nd=g+E.len*w(E.c,hu,u)*cz(ei);
       if(nd<dist[v]){dist[v]=nd;prevE[v]=ei;prevN[v]=u;srcK[v]=srcK[u];push(nd+h(v),v);}}
   }
   if(!bi)return null;
   // geometri
-  const pts=[],kav=[],kenar=[];let dk=0,m=0;const ekle=arr=>{for(const p of arr){const q=pts[pts.length-1];if(!q||Math.abs(q[0]-p[0])>1e-7||Math.abs(q[1]-p[1])>1e-7)pts.push(p);}};
+  const pts=[],kav=[],kenar=[],kyGiris=[];let dk=0,m=0,sonC=-1;const ekle=arr=>{for(const p of arr){const q=pts[pts.length-1];if(!q||Math.abs(q[0]-p[0])>1e-7||Math.abs(q[1]-p[1])>1e-7)pts.push(p);}};
   const sure=(m,c)=>m/1000/(RN_V[c]||15)*60;
+  const gec=c=>{if(c===6)return;if(c===8&&sonC!==8)kyGiris.push(pts.length-1);sonC=c;}; // kadastro yoluna giris: uyari noktasi (kisa baglantilar sayilmaz)
   let s,t;
-  if(bi.direct){s=bi.s;t=bi.t;const E=rn.E[s.e];ekle([[from.lat,from.lon]]);ekle(rnParca(E,s.along,t.along));dk+=sure(Math.abs(t.along-s.along),E.c);kenar.push(s.e);m+=Math.abs(t.along-s.along);}
+  if(bi.direct){s=bi.s;t=bi.t;const E=rn.E[s.e];ekle([[from.lat,from.lon]]);gec(E.c);ekle(rnParca(E,s.along,t.along));dk+=sure(Math.abs(t.along-s.along),E.c);kenar.push(s.e);m+=Math.abs(t.along-s.along);}
   else{
     t=bi.t;const yol=[];let n=bi.node;while(prevN[n]>=0){yol.push(prevE[n]);n=prevN[n];}yol.reverse();
     s=sc[srcK[n]];const SE=rn.E[s.e];
-    ekle([[from.lat,from.lon]]);
+    ekle([[from.lat,from.lon]]);gec(SE.c);
     if(n===SE.u){ekle(rnParca(SE,s.along,0));dk+=sure(s.along,SE.c);m+=s.along;}else{ekle(rnParca(SE,s.along,SE.len));dk+=sure(SE.len-s.along,SE.c);m+=SE.len-s.along;}
     kenar.push(s.e);
     let cur=n;
-    for(const ei of yol){const E=rn.E[ei];if(rnKavsak(cur))kav.push(pts.length-1);ekle(rnKenarYon(E,cur));dk+=sure(E.len,E.c);m+=E.len;kenar.push(ei);cur=E.u===cur?E.v:E.u;}
-    const TE=rn.E[t.e];if(rnKavsak(cur))kav.push(pts.length-1);
+    for(const ei of yol){const E=rn.E[ei];if(rnKavsak(cur))kav.push(pts.length-1);gec(E.c);ekle(rnKenarYon(E,cur));dk+=sure(E.len,E.c);m+=E.len;kenar.push(ei);cur=E.u===cur?E.v:E.u;}
+    const TE=rn.E[t.e];if(rnKavsak(cur))kav.push(pts.length-1);gec(TE.c);
     if(cur===TE.u){ekle(rnParca(TE,0,t.along));dk+=sure(t.along,TE.c);m+=t.along;}else{ekle(rnParca(TE,TE.len,t.along));dk+=sure(TE.len-t.along,TE.c);m+=TE.len-t.along;}
     if(kenar[kenar.length-1]!==t.e)kenar.push(t.e);
   }
   ekle([[to.lat,to.lon]]);
   dk+=(s.d+t.d)/1000/4*60;
-  return {pts,dk,head:s.d,tail:t.d,kav,kenar,m};
+  return {pts,dk,head:s.d,tail:t.d,kav,kenar,m,kyGiris};
 }
 function rnAlternatifler(from,to,best,adet){ // en kisa rotadan belirgin farkli, makul uzunlukta en fazla 'adet' rota
   const out=[],ceza=new Map();
@@ -1303,7 +1307,7 @@ async function rnLeg(from,to,onProgress,alt){ // tek bacak: uzun yolda internet 
   if(!on){r.alts=alts;return r;}
   const n0=on.pts.length;
   const birlestir=x=>{const kav=[];for(let i=1;i<n0;i++)kav.push(i);x.kav.forEach(i=>kav.push(n0+i));
-    return {pts:[[from.lat,from.lon]].concat(on.pts,x.pts.slice(1)),dk:on.dk+x.dk,head:on.head,tail:x.tail,kav};};
+    return {pts:[[from.lat,from.lon]].concat(on.pts,x.pts.slice(1)),dk:on.dk+x.dk,head:on.head,tail:x.tail,kav,kyGiris:(x.kyGiris||[]).map(i=>n0+i)};};
   const sonuc=birlestir(r);sonuc.alts=alts.map(birlestir);return sonuc;
 }
 function yolSonu(leg,p){ // bacagin arac yolundaki son noktasi (parsele yurume baslamadan once)
@@ -1769,7 +1773,7 @@ async function ensureGraph(b,onProgress){
 }
 async function computeLeg(from,p,onProgress,alt){ // from -> p (tek bacak); alt: diger rotalar da hesaplanir
   try{const r=await rnLeg(from,p,onProgress,alt);
-    if(r){const leg=finishLeg(r.pts,r.dk,r.head,r.tail,r.kav);leg.alts=(r.alts||[]).map(a=>finishLeg(a.pts,a.dk,a.head,a.tail,a.kav));return leg;}}catch(e){console.warn("yol ağı",e);}
+    if(r){const leg=finishLeg(r.pts,r.dk,r.head,r.tail,r.kav,r.kyGiris);leg.alts=(r.alts||[]).map(a=>finishLeg(a.pts,a.dk,a.head,a.tail,a.kav,a.kyGiris));return leg;}}catch(e){console.warn("yol ağı",e);}
   const far=hav(from,p);
   if(far>15){
     const r=await osrmRoute([from,p.yol||p]);
@@ -1783,7 +1787,7 @@ async function computeLeg(from,p,onProgress,alt){ // from -> p (tek bacak); alt:
   if(!t){const r=await osrmRoute([from,p.yol||p]);const son=hav({lat:r.line[r.line.length-1][0],lon:r.line[r.line.length-1][1]},p)*1000;return finishLeg(r.line.concat([[p.lat,p.lon]]),r.dk+son/1000/4*60,0,son);}
   return finishLeg(t.pts,t.m/1000/25*60,t.head,t.tail);
 }
-function finishLeg(pts,dk,head,tail,kav){ // kav: donus aranacak nokta sirasi (kavsaklar); yoksa tum ara noktalar
+function finishLeg(pts,dk,head,tail,kav,kyGiris){ // kav: donus aranacak nokta sirasi (kavsaklar); yoksa tum ara noktalar; kyGiris: kadastro yoluna giris noktalari
   const cums=[0];let cum=0;
   for(let i=1;i<pts.length;i++){cum+=hav({lat:pts[i-1][0],lon:pts[i-1][1]},{lat:pts[i][0],lon:pts[i][1]})*1000;cums.push(cum);}
   const n=pts.length,tailM=(tail>8&&n>=2)?cum-cums[n-2]:0; // son parca: yoldan parsele yurume (ayni olcuyle)
@@ -1803,6 +1807,8 @@ function finishLeg(pts,dk,head,tail,kav){ // kav: donus aranacak nokta sirasi (k
     const txt=Math.abs(dlt)>135?(dlt>0?"keskin sağa dönün":"keskin sola dönün"):(Math.abs(dlt)>70?(dlt>0?"sağa dönün":"sola dönün"):(dlt>0?"hafif sağa":"hafif sola"));
     if(man.length&&cums[i]-man[man.length-1].at<25)continue;
     man.push({at:cums[i],txt});}
+  (kyGiris||[]).forEach(i=>{if(i>0&&i<pts.length-1&&cums[i]<offStart-1)man.push({at:cums[i],txt:"kadastro yoluna giriş (tapuda yol, arazide olmayabilir)",ky:true});});
+  man.sort((a,b)=>a.at-b.at);
   if(tailM>30)man.push({at:offStart,txt:`araç yolu bitiyor, parsele ${fmtInt(tailM)} m yürüyün`,off:true});
   else if(tailM>8)man.push({at:offStart,txt:`parsel ${fmtInt(tailM)} m içeride`,off:true});
   return {pts,cums,total:cum,dk,man,head:head||0,tail:tail||0,offStart};
@@ -1887,14 +1893,15 @@ function liveInit(){
   live.map.on("click",e=>{if(!draw.on)return;draw.pts.push([e.latlng.lat,e.latlng.lng]);drawRender();$("liveSub").textContent=`${draw.pts.length} nokta işaretlendi. Devam edin ya da Yolu kaydet deyin.`;});
 }
 /* ---------- Canli haritada hazir yol agi cizimi ---------- */
-const RN_STIL={yer:{color:"#FFFFFF",weight:1.5,opacity:.5},koy:{color:"#FFFFFF",weight:2,opacity:.7},ana:{color:"#FFFFFF",weight:3,opacity:.85},bag:{color:"#FFD54F",weight:1.5,dashArray:"2 5",opacity:.7},tarla:{color:"#FFD54F",weight:2,dashArray:"6 5",opacity:.85}};
-function rnGrup(c){return (c===0||c===9)?"ana":c===1?"koy":c===2?"yer":c===6?"bag":c===7?null:"tarla";}
+const RN_STIL={yer:{color:"#FFFFFF",weight:1.5,opacity:.5},koy:{color:"#FFFFFF",weight:2,opacity:.7},ana:{color:"#FFFFFF",weight:3,opacity:.85},bag:{color:"#FFD54F",weight:1.5,dashArray:"2 5",opacity:.7},tarla:{color:"#FFD54F",weight:2,dashArray:"6 5",opacity:.85},
+  kad:{color:"#FFD54F",weight:1.2,dashArray:"1 6",opacity:.6}}; // kadastro yolu: ince noktali (tapuda yol, arazide olmayabilir)
+function rnGrup(c){return (c===0||c===9)?"ana":c===1?"koy":c===2?"yer":c===6?"bag":c===7?null:c===8?"kad":"tarla";}
 function liveAgCiz(){
   if(!live.tracks)return;
   if(live.rnNesil!==rn.nesil||!live.rnCiz){live.tracks.clearLayers();live.rnCiz=new Set();live.rnNesil=rn.nesil;}
   for(const [key,eis] of rn.karoE){if(live.rnCiz.has(key))continue;live.rnCiz.add(key);
     const g={};for(const ei of eis){const s=rnGrup(rn.E[ei].c);if(s)(g[s]=g[s]||[]).push(rnNoktalar(rn.E[ei]));}
-    ["yer","koy","ana","bag","tarla"].forEach(s=>{if(g[s])L.polyline(g[s],Object.assign({interactive:false},RN_STIL[s])).addTo(live.tracks);});}
+    ["kad","yer","koy","ana","bag","tarla"].forEach(s=>{if(g[s])L.polyline(g[s],Object.assign({interactive:false},RN_STIL[s])).addTo(live.tracks);});}
 }
 /* ---------- Iz: haritada olmayan yoldan aracla gelinen kisim tek dokunusla ekip yoluna eklenir ---------- */
 const iz={pts:[],aday:null};
@@ -2309,6 +2316,7 @@ $("clearYes").onclick=()=>{$("clearConfirm").hidden=true;if(kilitli($("shareMsg"
 $("fitBtn").addEventListener("click",()=>{if(!listeAcik)kilitUyar($("mapMsg"));});
 
 if("serviceWorker" in navigator){try{navigator.serviceWorker.register("sw.js").catch(()=>{});}catch(e){}}
+if(location.search.includes("test=1"))window.__kpr={rnRota,rnAgYukle,rn,RN_KY_SON}; // yalniz otomatik testler icin
 load();
 try{listeAciliyor=!!localStorage.getItem(KKEY);}catch(e){} // kayitli anahtar varsa liste birazdan kendiliginden acilir
 console.log("Kayseri Parsel Rota sürüm "+SURUM);
