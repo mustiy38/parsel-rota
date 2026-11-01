@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Kayseri Parsel Rota</title>
 <meta name="theme-color" content="#134A40">
-<meta name="version" content="r66">
+<meta name="version" content="r67">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
@@ -97,6 +97,14 @@ ul.res button .d{font-size:13px;color:var(--label);font-weight:600;text-align:ri
 .pbilgi .pbtn.cikar{background:#fff;color:#A23A2C;border:1px solid #A23A2C;font-weight:700}
 .pbilgi .plink{display:block;margin-top:6px;color:#134A40;font-weight:700}
 .mah-btn{display:flex;align-items:center;justify-content:center}
+.olc-panel{right:auto;width:min(290px,calc(100% - 62px));max-height:none}
+.olc-bas{display:flex;justify-content:space-between;align-items:center;font-size:16px}
+.olc-sec{display:flex;gap:18px;font-size:15px}
+.olc-sec label{flex-direction:row;align-items:center;gap:6px;font-size:15px;color:var(--ink)}
+.olc-sec input{width:18px;height:18px;margin:0;accent-color:#134A40}
+.olc-sonuc{font-size:14px;font-weight:700;color:var(--ink)}
+.olc-dug{display:flex;gap:6px}.olc-dug button{flex:1}
+#map.olcuyor{cursor:crosshair}
 .leaflet-control-layers-expanded{padding:8px 12px;border-radius:12px;background:#fff;color:#1b2b27}
 .leaflet-control-layers-base{display:flex;flex-direction:column;gap:2px}
 .leaflet-control-layers label{display:block;font:600 15px var(--f-body);color:#1b2b27;margin:0}
@@ -339,7 +347,7 @@ summary{cursor:pointer;font-weight:700}
 "use strict";
 const ILCELER_STATIK=["Akkışla","Bünyan","Develi","Felahiye","Hacılar","İncesu","Kocasinan","Melikgazi","Özvatan","Pınarbaşı","Sarıoğlan","Sarız","Talas","Tomarza","Yahyalı","Yeşilhisar"];
 const MERKEZ={lat:38.7205,lon:35.4826};
-const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", LSKEY="kpr-v3", SURUM="r66 · 01.11.2026 20:30";
+const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", LSKEY="kpr-v3", SURUM="r67 · 01.11.2026 22:40";
 const $=id=>document.getElementById(id);
 
 /* ---------- Giris kaydi (Google Formu) ---------- */
@@ -826,14 +834,18 @@ function initMap(){
   const MA=L.Control.extend({onAdd:function(){const b=L.DomUtil.create("button","fs-btn mah-btn");b.type="button";b.id="mahBtn";b.title="Mahalle ara";b.setAttribute("aria-label","Mahalle ara");
     b.innerHTML='<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="10" cy="10" r="6.2" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M14.8 14.8L20.5 20.5" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/></svg>';
     L.DomEvent.disableClickPropagation(b);L.DomEvent.on(b,"click",mahDugme);return b;}});
-  new MA({position:"topleft"}).addTo(map); // tam ekran dugmesinin altinda: mahalle arama
+  const OL=L.Control.extend({onAdd:function(){const b=L.DomUtil.create("button","fs-btn mah-btn");b.type="button";b.id="olcBtn";b.title="Alan ve mesafe ölç";b.setAttribute("aria-label","Alan ve mesafe ölç");
+    b.innerHTML='<svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true"><path d="M3 17L17 3l4 4L7 21z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+    L.DomEvent.disableClickPropagation(b);L.DomEvent.on(b,"click",olcDugme);return b;}});
+  new OL({position:"topleft"}).addTo(map); // tam ekran ile mahalle arama arasinda: alan ve mesafe olcumu
+  new MA({position:"topleft"}).addTo(map); // mahalle arama
   const ip=map.createPane("ilcePane");ip.style.zIndex=350;ip.style.pointerEvents="none"; // ilce sinirlari parsellerin altinda, dokunmayi engellemez
   const mp=map.createPane("mahPane");mp.style.zIndex=360;mp.style.pointerEvents="none";
   const rp=map.createPane("rotaPane");rp.style.zIndex=410;rp.style.pointerEvents="none"; // kirmizi rota: en yakin gorunumde gizlenir, uydudaki gercek yol gorunsun
   const rotaGorunum=()=>{rp.style.display=map.getZoom()>=map.getMaxZoom()?"none":"";};map.on("zoomend",rotaGorunum);rotaGorunum();
   ils.lyr=L.layerGroup().addTo(map);mah.lyr=L.layerGroup().addTo(map);mahPanelKur();
   parcelLayer=L.layerGroup().addTo(map);routeLayer=L.layerGroup().addTo(map);
-  map.on("click",e=>haritaDokun(map,e));
+  map.on("click",e=>{if(olc.on){olcNokta(e.latlng);return;}haritaDokun(map,e);});olcPanelKur();
   if(COARSE){const c=map.getContainer();const h=document.createElement("div");h.className="two-hint";h.textContent="Haritayı iki parmakla kaydırın ve yakınlaştırın";c.appendChild(h);let t=null;
     c.addEventListener("touchstart",e=>{if(e.touches.length===1&&!isFS()){h.classList.add("on");clearTimeout(t);t=setTimeout(()=>h.classList.remove("on"),1100);}else h.classList.remove("on");},{passive:true});
     c.addEventListener("touchend",()=>{clearTimeout(t);t=setTimeout(()=>h.classList.remove("on"),300);},{passive:true});}
@@ -962,6 +974,40 @@ function etiketYeri(h){ // ad etiketi: halkanin agirlik merkezi; disarida kalirs
   for(let i=1;i<12;i++)for(let j=1;j<12;j++){const la=a0+(a1-a0)*i/12,lo=b0+(b1-b0)*j/12;if(!halkaIcinde(h,la,lo))continue;const d=(la-c[0])**2+(lo-c[1])**2;if(d<ed){ed=d;en=[la,lo];}}
   return en;
 }
+/* ---------- Olcum: haritaya dokunarak alan ya da mesafe ---------- */
+const olc={on:false,tur:"alan",pts:[],lyr:null,panel:null};
+function olcPanelKur(){
+  olc.lyr=L.layerGroup().addTo(map);
+  const p=document.createElement("div");p.className="mah-panel olc-panel";p.id="olcPanel";p.hidden=true;
+  p.innerHTML='<div class="olc-bas"><b>Ölçüm</b><button type="button" class="mah-x" id="olcKapat" aria-label="Kapat">✕</button></div>'+
+    '<div class="olc-sec"><label><input type="radio" name="olcTur" value="alan" checked> Alan</label><label><input type="radio" name="olcTur" value="mesafe"> Mesafe</label></div>'+
+    '<div class="olc-sonuc" id="olcSonuc">Haritada noktalara dokunun.</div>'+
+    '<div class="olc-dug"><button type="button" class="mah-x" id="olcGeri">Geri al</button><button type="button" class="mah-x" id="olcSil">Temizle</button></div>';
+  map.getContainer().appendChild(p);olc.panel=p;
+  L.DomEvent.disableClickPropagation(p);L.DomEvent.disableScrollPropagation(p);
+  $("olcKapat").onclick=olcKapat;
+  $("olcGeri").onclick=()=>{olc.pts.pop();olcCiz();};
+  $("olcSil").onclick=()=>{olc.pts=[];olcCiz();};
+  p.querySelectorAll('input[name=olcTur]').forEach(r=>r.onchange=()=>{olc.tur=r.value;olcCiz();});
+}
+function olcDugme(){if(olc.on){olcKapat();return;}mahPanelKapat();map.closePopup();olc.on=true;olc.pts=[];olc.panel.hidden=false;map.getContainer().classList.add("olcuyor");olcCiz();}
+function olcKapat(){olc.on=false;olc.pts=[];if(olc.lyr)olc.lyr.clearLayers();if(olc.panel)olc.panel.hidden=true;if(map)map.getContainer().classList.remove("olcuyor");}
+function olcNokta(ll){olc.pts.push([ll.lat,ll.lng]);olcCiz();}
+const fmtM=m=>m>=1000?(m/1000).toLocaleString("tr-TR",{maximumFractionDigits:2})+" km":fmtInt(m)+" m";
+function olcCiz(){
+  olc.lyr.clearLayers();const P=olc.pts,alan=olc.tur==="alan";
+  if(P.length>1){if(alan&&P.length>2)L.polygon(P,{color:"#FFEB3B",weight:3,fillColor:"#FFEB3B",fillOpacity:.2,interactive:false}).addTo(olc.lyr);
+    else L.polyline(P,{color:"#FFEB3B",weight:3,interactive:false}).addTo(olc.lyr);}
+  P.forEach(q=>L.circleMarker(q,{radius:5,color:"#000",weight:1.5,fillColor:"#FFEB3B",fillOpacity:1,interactive:false}).addTo(olc.lyr));
+  let uz=0;for(let i=1;i<P.length;i++)uz+=hav({lat:P[i-1][0],lon:P[i-1][1]},{lat:P[i][0],lon:P[i][1]})*1000;
+  let t;
+  if(!P.length)t=alan?"Alanın köşelerine sırayla dokunun.":"Ölçülecek yol boyunca noktalara dokunun.";
+  else if(alan){if(P.length<3)t=`${P.length} nokta · en az 3 nokta gerekli`;
+    else{const R=P.map(q=>[q[1]-P[0][1],q[0]]);R.push(R[0]);const a=geoAreaM2(R);const cevre=uz+hav({lat:P[P.length-1][0],lon:P[P.length-1][1]},{lat:P[0][0],lon:P[0][1]})*1000;
+      t=`Alan: ${fmtDa(a)} (${fmtInt(a)} m²) · çevre ${fmtM(cevre)}`;}}
+  else t=P.length<2?"1 nokta · devam edin":`Mesafe: ${fmtM(uz)} · ${P.length} nokta`;
+  $("olcSonuc").textContent=t;
+}
 function mahPanelKur(){ // harita ustunde arama kutusu (dokunma ve tuslar haritaya gecmez)
   const p=document.createElement("div");p.className="mah-panel";p.id="mahPanel";p.hidden=true;
   p.innerHTML='<div class="mah-ust"><select id="mahIlce" aria-label="İlçe"></select><button type="button" class="mah-x" id="mahKapat" aria-label="Kapat">✕</button></div>'+
@@ -978,7 +1024,7 @@ function mahPanelKur(){ // harita ustunde arama kutusu (dokunma ve tuslar harita
   $("mahQ").addEventListener("keydown",ev=>{if(ev.key==="Enter"){ev.preventDefault();const b=$("mahListe").querySelector("button");if(b)b.click();}});
 }
 function mahDugme(){
-  if(!map)return;
+  if(!map)return;if(olc.on)olcKapat();
   if(!kilitAcik()){L.popup({maxWidth:240}).setLatLng(map.getCenter()).setContent(kilitPopup()).openOn(map);return;}
   if(!mah.panel.hidden){mahPanelKapat();return;}
   map.closePopup();
