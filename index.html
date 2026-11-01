@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Kayseri Parsel Rota</title>
 <meta name="theme-color" content="#134A40">
-<meta name="version" content="r58">
+<meta name="version" content="r59">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
@@ -328,7 +328,7 @@ summary{cursor:pointer;font-weight:700}
 "use strict";
 const ILCELER_STATIK=["Akkışla","Bünyan","Develi","Felahiye","Hacılar","İncesu","Kocasinan","Melikgazi","Özvatan","Pınarbaşı","Sarıoğlan","Sarız","Talas","Tomarza","Yahyalı","Yeşilhisar"];
 const MERKEZ={lat:38.7205,lon:35.4826};
-const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", LSKEY="kpr-v3", SURUM="r58 · 31.10.2026 16:40";
+const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", LSKEY="kpr-v3", SURUM="r59 · 01.11.2026 10:50";
 const $=id=>document.getElementById(id);
 
 /* ---------- Giris kaydi (Google Formu) ---------- */
@@ -818,6 +818,8 @@ function initMap(){
   new MA({position:"topleft"}).addTo(map); // tam ekran dugmesinin altinda: mahalle arama
   const ip=map.createPane("ilcePane");ip.style.zIndex=350;ip.style.pointerEvents="none"; // ilce sinirlari parsellerin altinda, dokunmayi engellemez
   const mp=map.createPane("mahPane");mp.style.zIndex=360;mp.style.pointerEvents="none";
+  const rp=map.createPane("rotaPane");rp.style.zIndex=410;rp.style.pointerEvents="none"; // kirmizi rota: en yakin gorunumde gizlenir, uydudaki gercek yol gorunsun
+  const rotaGorunum=()=>{rp.style.display=map.getZoom()>=map.getMaxZoom()?"none":"";};map.on("zoomend",rotaGorunum);rotaGorunum();
   ils.lyr=L.layerGroup().addTo(map);mah.lyr=L.layerGroup().addTo(map);mahPanelKur();
   parcelLayer=L.layerGroup().addTo(map);routeLayer=L.layerGroup().addTo(map);
   map.on("click",e=>haritaDokun(map,e));
@@ -860,8 +862,8 @@ function drawMap(act,sp){
   if(stops.length>1&&routeCache.key===rk&&routeCache.line){
     if(routeCache.legs)routeCache.legs.forEach(ozetBacakCiz);
     else{
-      L.polyline(routeCache.line,{color:"#FFFFFF",weight:6,opacity:.6}).addTo(routeLayer);
-      L.polyline(routeCache.line,{color:"#A23A2C",weight:3}).addTo(routeLayer);
+      L.polyline(routeCache.line,{pane:"rotaPane",color:"#FFFFFF",weight:6,opacity:.6}).addTo(routeLayer);
+      L.polyline(routeCache.line,{pane:"rotaPane",color:"#A23A2C",weight:3}).addTo(routeLayer);
       if(!routeCache.osm)act.forEach(p=>{if(p.yol&&p.yol.m>30)L.polyline([[p.yol.lat,p.yol.lon],[p.lat,p.lon]],{color:"#FFFFFF",weight:2,dashArray:"4 6",opacity:.9}).addTo(routeLayer);});
     }
   }else{
@@ -1338,7 +1340,7 @@ async function yolNoktasiRn(p){ // parsele en yakin yol noktasi (tarla yollari d
 function ozetBacakCiz(leg){ // arac kismi kirmizi, yolsuz kisimlar (yurume) kesikli
   const n=leg.pts.length,hasHead=leg.head>30&&n>2,hasTail=leg.tail>8&&n>=2;
   const mid=leg.pts.slice(hasHead?1:0,hasTail?n-1:n);
-  if(mid.length>1){L.polyline(mid,{color:"#FFFFFF",weight:6,opacity:.6}).addTo(routeLayer);L.polyline(mid,{color:"#A23A2C",weight:3}).addTo(routeLayer);}
+  if(mid.length>1){L.polyline(mid,{pane:"rotaPane",color:"#FFFFFF",weight:6,opacity:.6}).addTo(routeLayer);L.polyline(mid,{pane:"rotaPane",color:"#A23A2C",weight:3}).addTo(routeLayer);}
   const dash=pts=>L.polyline(pts,{color:"#FFFFFF",weight:2,dashArray:"4 6",opacity:.9}).addTo(routeLayer);
   if(hasHead)dash(leg.pts.slice(0,2));if(hasTail)dash(leg.pts.slice(n-2));
 }
@@ -2340,7 +2342,7 @@ $("clearYes").onclick=()=>{$("clearConfirm").hidden=true;if(kilitli($("shareMsg"
 $("fitBtn").addEventListener("click",()=>{if(!listeAcik)kilitUyar($("mapMsg"));});
 
 if("serviceWorker" in navigator){try{navigator.serviceWorker.register("sw.js").catch(()=>{});}catch(e){}}
-if(location.search.includes("test=1"))window.__kpr={rnRota,rnAgYukle,rn,RN_KY_SON}; // yalniz otomatik testler icin
+if(location.search.includes("test=1"))window.__kpr={rnRota,rnAgYukle,rn,RN_KY_SON,rnYakin,yolNoktasiRn}; // yalniz otomatik testler icin
 load();
 try{listeAciliyor=!!localStorage.getItem(KKEY);}catch(e){} // kayitli anahtar varsa liste birazdan kendiliginden acilir
 console.log("Kayseri Parsel Rota sürüm "+SURUM);
