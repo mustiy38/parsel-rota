@@ -1,5 +1,5 @@
 /* Kayseri Parsel Rota - cevrimdisi calisma (service worker) */
-const SURUM = "r62";
+const SURUM = "r63";
 const KABUK = "kabuk-" + SURUM;
 const DINAMIK = "dinamik-v1";
 const UYDU = "uydu-v1";
@@ -18,8 +18,8 @@ self.addEventListener("activate", e => {
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k.startsWith("kabuk-") && k !== KABUK).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
 
-function agOnce(req, cacheName) { // once ag, olmazsa onbellek
-  return fetch(req).then(res => {
+function agOnce(req, cacheName) { // once ag (sunucuya yeniden sorarak; GitHub Pages 10 dk onbellek veriyor), olmazsa onbellek
+  return fetch(req.url, { cache: "no-cache", credentials: "same-origin" }).then(res => {
     if (res && res.ok) { const kopya = res.clone(); caches.open(cacheName).then(c => c.put(req, kopya)); }
     return res;
   }).catch(() => caches.match(req).then(r => r || new Response("", { status: 504, statusText: "cevrimdisi" })));

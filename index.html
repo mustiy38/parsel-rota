@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Kayseri Parsel Rota</title>
 <meta name="theme-color" content="#134A40">
-<meta name="version" content="r62">
+<meta name="version" content="r63">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
@@ -54,6 +54,7 @@ button:disabled{opacity:.5;cursor:default}
 .big{font-size:17px;padding:14px 16px}
 .red{background:#A23A2C;border-color:#A23A2C;color:#FFFFFF}
 .hint{font-size:13px;color:var(--label);margin:0}
+.hint.surum{text-align:center;font-size:12px;opacity:.8;padding-bottom:4px}
 .msg{font-size:14px;padding:8px 10px;border-radius:8px;background:var(--chip)}
 .msg.err{background:color-mix(in srgb,var(--alert) 14%,var(--surface));color:var(--alert)}
 .msg.ok{background:color-mix(in srgb,var(--ok) 16%,var(--surface))}
@@ -301,6 +302,7 @@ summary{cursor:pointer;font-weight:700}
     <div id="offMsg" class="msg" hidden></div>
     <div id="offList" class="hint"></div>
   </section>
+  <p class="hint surum" id="surumYazi"></p>
 </div>
 
 <div id="live" hidden>
@@ -330,7 +332,7 @@ summary{cursor:pointer;font-weight:700}
 "use strict";
 const ILCELER_STATIK=["Akkışla","Bünyan","Develi","Felahiye","Hacılar","İncesu","Kocasinan","Melikgazi","Özvatan","Pınarbaşı","Sarıoğlan","Sarız","Talas","Tomarza","Yahyalı","Yeşilhisar"];
 const MERKEZ={lat:38.7205,lon:35.4826};
-const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", LSKEY="kpr-v3", SURUM="r62 · 01.11.2026 11:35";
+const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", LSKEY="kpr-v3", SURUM="r63 · 01.11.2026 11:30";
 const $=id=>document.getElementById(id);
 
 /* ---------- Giris kaydi (Google Formu) ---------- */
@@ -2396,7 +2398,7 @@ if("serviceWorker" in navigator){try{navigator.serviceWorker.register("sw.js").c
 if(location.search.includes("test=1"))window.__kpr={rnRota,rnAgYukle,rn,RN_KY_SON,rnYakin,yolNoktasiRn,live}; // yalniz otomatik testler icin
 load();
 try{listeAciliyor=!!localStorage.getItem(KKEY);}catch(e){} // kayitli anahtar varsa liste birazdan kendiliginden acilir
-console.log("Kayseri Parsel Rota sürüm "+SURUM);
+console.log("Kayseri Parsel Rota sürüm "+SURUM);$("surumYazi").textContent="Sürüm "+SURUM;
 $("start").value=state.start;$("customWrap").hidden=state.start!=="custom";$("customStart").value=state.custom||"";$("chunk").value=state.chunk;
 initMap();
 fillIlce();
