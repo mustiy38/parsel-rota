@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Kayseri Parsel Rota</title>
 <meta name="theme-color" content="#134A40">
-<meta name="version" content="r65">
+<meta name="version" content="r66">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
@@ -339,7 +339,7 @@ summary{cursor:pointer;font-weight:700}
 "use strict";
 const ILCELER_STATIK=["Akkışla","Bünyan","Develi","Felahiye","Hacılar","İncesu","Kocasinan","Melikgazi","Özvatan","Pınarbaşı","Sarıoğlan","Sarız","Talas","Tomarza","Yahyalı","Yeşilhisar"];
 const MERKEZ={lat:38.7205,lon:35.4826};
-const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", LSKEY="kpr-v3", SURUM="r65 · 01.11.2026 13:35";
+const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", LSKEY="kpr-v3", SURUM="r66 · 01.11.2026 20:30";
 const $=id=>document.getElementById(id);
 
 /* ---------- Giris kaydi (Google Formu) ---------- */
@@ -1469,7 +1469,7 @@ function render(){
     b.append(t,m,a);li.append(numEl,b);ol.appendChild(li);
   });
   const legs=$("legs");legs.innerHTML="";const MAXDURAK=9;
-  if(act.length>1){const aEl=document.createElement("button");aEl.type="button";aEl.className="btn big red";aEl.onclick=()=>liveStart(act.slice());
+  if(act.length>=1){const aEl=document.createElement("button");aEl.type="button";aEl.className="btn big red";aEl.onclick=()=>liveStart(act.slice());
     aEl.textContent=`Navigasyonu başlat (${act.length} durak)`;legs.appendChild(aEl);
     const part=act.slice(0,MAXDURAK);const alt=document.createElement("a");alt.className="btn ghost";alt.href=dirUrl(part);alt.target="_blank";alt.rel="noopener";alt.style.fontSize="13px";alt.style.padding="6px 10px";alt.textContent=act.length<=MAXDURAK?`Tüm rota Google Maps'te (${part.length} durak)`:`İlk ${MAXDURAK} durak Google Maps'te`;legs.appendChild(alt);}
   drawMap(act,sp);
