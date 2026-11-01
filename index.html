@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Kayseri Parsel Rota</title>
 <meta name="theme-color" content="#134A40">
-<meta name="version" content="r61">
+<meta name="version" content="r62">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
@@ -330,7 +330,7 @@ summary{cursor:pointer;font-weight:700}
 "use strict";
 const ILCELER_STATIK=["Akkışla","Bünyan","Develi","Felahiye","Hacılar","İncesu","Kocasinan","Melikgazi","Özvatan","Pınarbaşı","Sarıoğlan","Sarız","Talas","Tomarza","Yahyalı","Yeşilhisar"];
 const MERKEZ={lat:38.7205,lon:35.4826};
-const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", LSKEY="kpr-v3", SURUM="r61 · 01.11.2026 11:25";
+const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", LSKEY="kpr-v3", SURUM="r62 · 01.11.2026 11:35";
 const $=id=>document.getElementById(id);
 
 /* ---------- Giris kaydi (Google Formu) ---------- */
@@ -1432,7 +1432,7 @@ function render(){
   state.items.forEach(p=>{
     const li=document.createElement("li");const pos=hasPos(p);
     li.className="stop"+(p.done?" done":"")+(pos?"":" nopos");
-    const numEl=document.createElement("div");numEl.className="num";numEl.textContent=pos?(p.done?"✓":++k):"!";
+    const numEl=document.createElement("div");numEl.className="num";numEl.textContent=pos?String(++k):"!";
     const b=document.createElement("div");b.className="body";
     const t=document.createElement("div");t.className="t";t.textContent=label(p);
     if(p.ornek){const tg=document.createElement("span");tg.className="tag";tg.textContent="Örnek";t.append(" ",tg);}
@@ -1441,6 +1441,7 @@ function render(){
     if(pos){if(p.alan)parts.push(fmtDa(p.alan));if(p.nitelik)parts.push(baslik(p.nitelik));if(p.mevkii)parts.push(p.mevkii);
       if(p.yol)parts.push(p.yol.m<=4000?`yola ${fmtInt(p.yol.m)} m`:"yakın yol bulunamadı");else if(!p.yolHata)parts.push("yol noktası hazırlanıyor");}
     else parts.push(p.hata?("Konum yok: "+p.hata):"Konum yok, rotaya alınmadı");
+    if(p.done)parts.unshift("✓ gidildi");
     if(p.not)parts.push(p.not);
     m.textContent=parts.join(" · ");
     const a=document.createElement("div");a.className="acts";
@@ -1460,7 +1461,7 @@ function render(){
   });
   const legs=$("legs");legs.innerHTML="";const MAXDURAK=9;
   if(act.length>1){const aEl=document.createElement("button");aEl.type="button";aEl.className="btn big red";aEl.onclick=()=>liveStart(act.slice());
-    aEl.textContent=`Navigasyonu başlat (${act.length} durak: A–${harf(act.length-1)})`;legs.appendChild(aEl);
+    aEl.textContent=`Navigasyonu başlat (${act.length} durak)`;legs.appendChild(aEl);
     const part=act.slice(0,MAXDURAK);const alt=document.createElement("a");alt.className="btn ghost";alt.href=dirUrl(part);alt.target="_blank";alt.rel="noopener";alt.style.fontSize="13px";alt.style.padding="6px 10px";alt.textContent=act.length<=MAXDURAK?`Tüm rota Google Maps'te (${part.length} durak)`:`İlk ${MAXDURAK} durak Google Maps'te`;legs.appendChild(alt);}
   drawMap(act,sp);
 }
@@ -1490,7 +1491,7 @@ function bulDup(p){const k=pKey(p);return state.items.find(x=>!x.ornek&&pKey(x)=
 function dedupe(){const seen=new Set();state.items=state.items.filter(x=>{if(x.ornek)return true;const k=pKey(x);if(seen.has(k))return false;seen.add(k);return true;});}
 function autoSort(){const act=active();if(act.length<2)return;const ord=optimize(act,startPoint());const others=state.items.filter(p=>!act.includes(p));state.items=ord.concat(others);}
 function ekle(p,sabit){ // sabit: harita oldugu yerde kalir (haritadan eklerken yakinlik degismez)
-  if(kilitli($("addMsg")))return false;const d=bulDup(p);if(d){const sira=active().indexOf(d)+1;show($("addMsg"),`Bu parsel zaten listede${sira?` (sıra ${sira})`:""}: ${label(d)}`,"err");$("goBtn").onclick=()=>liveOpen(d);$("goRow").hidden=!hasPos(d);return false;}
+  if(kilitli($("addMsg")))return false;const d=bulDup(p);if(d){const sira=numara(d);show($("addMsg"),`Bu parsel zaten listede${sira?` (sıra ${sira})`:""}: ${label(d)}`,"err");$("goBtn").onclick=()=>liveOpen(d);$("goRow").hidden=!hasPos(d);return false;}
   dropSamples();state.items.push(p);autoSort();if(!sabit)needFit=true;save();render();snapAll();return true;}
 $("findBtn").onclick=async()=>{
   if(kilitli($("addMsg")))return;
@@ -1833,6 +1834,8 @@ function konus(t){
   try{const u=new SpeechSynthesisUtterance(t);u.lang="tr-TR";u.rate=1;speechSynthesis.cancel();speechSynthesis.speak(u);}catch(e){}
 }
 const harf=i=>i<26?String.fromCharCode(65+i):"S"+(i+1);
+function numara(p){let k=0;for(const x of state.items){if(hasPos(x)){k++;if(x===p)return k;}}return 0;} // listedeki sira numarasi (gidilenler dahil)
+const durakNo=i=>String(numara(live.stops[i])||i+1); // navigasyondaki durak etiketi = listedeki numara
 /* ---------- Ekip yollari: cizilen tarla yollari (yerel + form tablosu) ---------- */
 const CSV_URL=""; // form yanit tablosunun "web'de yayinla" CSV adresi (ayarlaninca ekip yollari tum telefonlara gelir)
 const team={roads:[],loaded:false,lyr:null};
@@ -1979,7 +1982,7 @@ function drawLeg(leg,style){
 function drawStops(){
   live.lyr.clearLayers();
   live.stops.forEach((q,i)=>{const cls="stop-icon"+(i<live.cur?" done":(i===live.cur?" cur":""));const sz=i===live.cur?32:28;
-    L.marker([q.lat,q.lon],{icon:L.divIcon({className:"",html:`<div class="${cls}">${harf(i)}</div>`,iconSize:[sz,sz],iconAnchor:[sz/2,sz/2]})}).addTo(live.lyr).bindPopup(()=>parselBilgi(q,listeDurumu(q),harf(i)),{maxWidth:260});
+    L.marker([q.lat,q.lon],{icon:L.divIcon({className:"",html:`<div class="${cls}">${durakNo(i)}</div>`,iconSize:[sz,sz],iconAnchor:[sz/2,sz/2]})}).addTo(live.lyr).bindPopup(()=>parselBilgi(q,listeDurumu(q),durakNo(i)),{maxWidth:260});
     if(q.ring&&q.ring.length>2)snrCiz(q,live.lyr);});
 }
 /* ---------- Diger rotalar: haritada gri cizilir; gri cizgiye ya da uzerindeki km etiketine dokununca secilir ---------- */
@@ -2045,7 +2048,7 @@ function liveStart(stops){
   else{$("liveInfo").textContent="Bu tarayıcıda konum desteği yok";}
   try{navigator.wakeLock&&navigator.wakeLock.request("screen").then(w=>live.wake=w).catch(()=>{});}catch(e){}
 }
-function liveTitle(){const p=live.p;const n=live.stops.length;$("liveTitle").textContent=(n>1?harf(live.cur)+" · ":"")+label(p)+(n>1?` · ${live.cur+1}/${n}`:"");}
+function liveTitle(){const p=live.p;const n=live.stops.length;$("liveTitle").textContent=(n>1?durakNo(live.cur)+" · ":"")+label(p)+(n>1?` · ${live.cur+1}/${n}`:"");}
 function liveClose(){
   $("live").hidden=true;
   if(live.watch!=null){navigator.geolocation.clearWatch(live.watch);live.watch=null;}
@@ -2062,12 +2065,12 @@ async function liveRecalc(all,kalanlar){ // kalanlar: mevcut bacak korunur, yaln
     if(live.stops!==st)return;
     live.offCount=0;live.said={};liveSecenek(live.legs[cur]);liveAgCiz();drawAllLegs();
     if(live.first){live.first=false;let b=L.latLngBounds(live.legs[cur].pts);(live.legs[cur].alts||[]).forEach(a=>b.extend(L.latLngBounds(a.pts)));live.map.invalidateSize();live.map.fitBounds(b,{padding:[40,40],maxZoom:17});live.fitZaman=Date.now();} // diger rotalar da gorunsun; takip 8 sn sonra surer
-    const t=live.legs[cur].total,ns=(live.secenek||[]).length-1;konus(`${st.length>1?harf(cur)+" durağına ":""}rota hazır, ${t>=1000?fmt(t/1000)+" kilometre":fmtInt(t)+" metre"}.${ns>0?` Haritada gri çizgili ${ns} başka rota var; dokunarak seçebilirsiniz.`:""}`);
+    const t=live.legs[cur].total,ns=(live.secenek||[]).length-1;konus(`${st.length>1?durakNo(cur)+" numaralı durağa ":""}rota hazır, ${t>=1000?fmt(t/1000)+" kilometre":fmtInt(t)+" metre"}.${ns>0?` Haritada gri çizgili ${ns} başka rota var; dokunarak seçebilirsiniz.`:""}`);
     liveTick();}
     if(all!==false){
       for(let tur=0;tur<2;tur++){
         for(let i=cur+1;i<st.length;i++){if(live.stops!==st)return;if(live.legs[i])continue;
-          live.legMsg=`${harf(i-1)}→${harf(i)} rotası hesaplanıyor…`;liveTick();
+          live.legMsg=`${durakNo(i-1)}→${durakNo(i)} rotası hesaplanıyor…`;liveTick();
           try{live.legs[i]=await computeLeg(yolSonu(live.legs[i-1],st[i-1]),st[i],null);live.legErr[i]="";liveAgCiz();drawAllLegs();}
           catch(e){live.legs[i]=null;live.legErr[i]=e.message;await sleep(4000);}}
         if(!live.legs.some((l,i)=>i>cur&&!l))break;
@@ -2092,7 +2095,7 @@ function liveEkle(p){ // navigasyon acikken listeye eklenen parsel: kalan durakl
   const digerleri=state.items.filter(x=>!stops.includes(x));state.items=stops.filter(x=>state.items.includes(x)).concat(digerleri);save();render();
   liveTitle();drawStops();drawAllLegs();
   const k=stops.indexOf(p);
-  konus(`Yeni parsel rotaya eklendi, ${harf(k)} durağı.${sira[0]!==eskiHedef?" Sıradaki durak değişti, rota yeniden hesaplanıyor.":""}`);
+  konus(`Yeni parsel rotaya eklendi, ${durakNo(k)} numaralı durak.${sira[0]!==eskiHedef?" Sıradaki durak değişti, rota yeniden hesaplanıyor.":""}`);
   if(live.busy)live.tekrar=true;else liveRecalc(true,true);
   return true;
 }
@@ -2121,10 +2124,10 @@ function liveTick(acc){
   if(pr.dist>80&&kus>60){live.offCount++;if(live.offCount>=3&&!live.busy){live.offCount=0;konus("Rotadan çıktınız, yeniden hesaplanıyor.");liveRecalc(false);return;}}else live.offCount=0;
   const dk=r.total>0?r.dk*kalan/r.total:0;
   const top=kalanToplam(kalan);
-  $("liveInfo").className="info big";$("liveInfo").textContent=(kalan>=1000?fmt(kalan/1000)+" km":fmtInt(kalan)+" m")+(dk>=1?` · ${fmtInt(dk)} dk`:"")+(cok?` · ${harf(live.cur)}`:"");
+  $("liveInfo").className="info big";$("liveInfo").textContent=(kalan>=1000?fmt(kalan/1000)+" km":fmtInt(kalan)+" m")+(dk>=1?` · ${fmtInt(dk)} dk`:"")+(cok?` · durak ${durakNo(live.cur)}`:"");
   const next=r.man.find(x=>x.at>pr.along+8);
   let yon;
-  if(kus<=40||kalan<=25){yon=cok?`${harf(live.cur)} durağına vardınız`:"Parsele vardınız";
+  if(kus<=40||kalan<=25){yon=cok?`${durakNo(live.cur)} numaralı durağa vardınız`:"Parsele vardınız";
     if(!live.arrived){live.arrived=true;konus(yon+".");if(live.cur<live.stops.length-1||active().length>1)$("liveNext").hidden=false;}}
   else if(pr.along>=r.offStart-1&&r.tail>30){yon=`Araç yolu bitti; parsele ${fmtInt(kus)} m yürüyün (kesikli çizgi)`;}
   else if(next){const d=next.at-pr.along;yon=`${fmtInt(d)} m sonra ${next.txt}`;
@@ -2132,7 +2135,7 @@ function liveTick(acc){
     if(d<=220&&d>60&&!live.said[k1]){live.said[k1]=1;konus(`${Math.round(d/10)*10} metre sonra ${next.txt}.`);}
     else if(d<=60&&!live.said[k2]){live.said[k2]=1;konus(next.txt+".");}}
   else{yon=`${fmtInt(kalan)} m düz devam, parsel ileride`;}
-  const eksik=live.legs.map((l,i)=>(!l&&i>live.cur&&live.legErr[i])?`${harf(i-1)}→${harf(i)} alınamadı (${live.legErr[i]})`:"").filter(Boolean);
+  const eksik=live.legs.map((l,i)=>(!l&&i>live.cur&&live.legErr[i])?`${durakNo(i-1)}→${durakNo(i)} alınamadı (${live.legErr[i]})`:"").filter(Boolean);
   $("liveSub").textContent=yon+(cok&&top>kalan+1?` · tüm duraklar ${fmt(top/1000)} km`:"")+(live.legMsg?` · ${live.legMsg}`:"")+(eksik.length?" · "+eksik.join("; "):"")+(pr.dist>40?` · rotaya ${fmtInt(pr.dist)} m`:"")+` · GPS ±${fmtInt(acc||0)} m`;
 }
 function liveNextStop(){
@@ -2256,8 +2259,8 @@ function parselBilgi(p,ek,on){ // bilgi ekrani: ilce/mahalle, ada/parsel, tapu a
 }
 function listeDurumu(p){ // listedeki parsel: sira bilgisi + Listeden cikar dugmesi (iki dokunusla)
   const e=document.createElement("div");e.className="pdurum";const s=active().indexOf(p)+1;
-  const t=document.createElement("div");t.textContent=p.done?"Listede · gidildi":(s?`Listede · sıra ${s}`:"Listede");
-  const navK=(live.map&&!$("live").hidden)?live.stops.indexOf(p):-1;if(navK>=0)t.textContent+=` · rotada ${harf(navK)} durağı`;
+  const t=document.createElement("div");t.textContent=`Listede · sıra ${numara(p)||s}`+(p.done?" · gidildi":"");
+  const navK=(live.map&&!$("live").hidden)?live.stops.indexOf(p):-1;if(navK>=0)t.textContent+=` · rotada ${navK+1}. durak`;
   const b=document.createElement("button");b.type="button";b.className="pbtn cikar";b.textContent="Listeden çıkar";
   b.onclick=()=>{if(!b.dataset.onay){b.dataset.onay="1";b.textContent="Emin misiniz? Listeden çıkar";setTimeout(()=>{delete b.dataset.onay;b.textContent="Listeden çıkar";},4000);return;}listedenCikar(p);};
   e.append(t,b);return e;
@@ -2275,7 +2278,7 @@ function liveCikar(p){ // navigasyondaki duragi cikarir; sonraki bacak yeniden h
   else if(k===live.cur){
     if(live.cur>=live.stops.length){const sira=active();konus("Durak listeden çıkarıldı.");if(sira.length)liveStart(sira);else liveClose();return;}
     live.p=live.stops[live.cur];live.legs[live.cur]=null;live.legErr[live.cur]="";Object.assign(live,{arrived:false,said:{},offCount:0});liveSecenek(null);$("liveNext").hidden=true;
-    konus(`Durak listeden çıkarıldı, sıradaki durak ${harf(live.cur)}.`);
+    konus(`Durak listeden çıkarıldı, sıradaki durak ${durakNo(live.cur)} numara.`);
   }else{if(k<live.stops.length){live.legs[k]=null;live.legErr[k]="";}konus("Durak listeden çıkarıldı.");}
   live.legMsg="";liveTitle();drawStops();drawAllLegs();liveTick();
   if(live.busy)live.tekrar=true;else liveRecalc(true,true);
@@ -2305,7 +2308,7 @@ async function snrListeyeEkle(f,btn){
   const h=snrHalka(f);p.ring=h.ring;if(h.halkalar)p.halkalar=h.halkalar;p.sinir="ok";
   const ok=ekle(p,true);
   const navda=ok&&liveEkle(p);
-  btn.textContent=ok?(navda?`Rotaya eklendi · ${harf(live.stops.indexOf(p))} durağı`:`Listeye eklendi · sıra ${active().indexOf(p)+1}`):(kilitAcik()?"Zaten listede":"Veri kilitli");
+  btn.textContent=ok?(navda?`Rotaya eklendi · ${numara(p)} numara`:`Listeye eklendi · sıra ${numara(p)}`):(kilitAcik()?"Zaten listede":"Veri kilitli");
   if(live.map&&!$("live").hidden&&!navda)drawStops();
 }
 
