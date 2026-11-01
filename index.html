@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Kayseri Parsel Rota</title>
 <meta name="theme-color" content="#134A40">
-<meta name="version" content="r67">
+<meta name="version" content="r68">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
@@ -103,7 +103,7 @@ ul.res button .d{font-size:13px;color:var(--label);font-weight:600;text-align:ri
 .olc-sec label{flex-direction:row;align-items:center;gap:6px;font-size:15px;color:var(--ink)}
 .olc-sec input{width:18px;height:18px;margin:0;accent-color:#134A40}
 .olc-sonuc{font-size:14px;font-weight:700;color:var(--ink)}
-.olc-dug{display:flex;gap:6px}.olc-dug button{flex:1}
+.olc-dug{display:flex;gap:6px}.olc-dug button{flex:0 0 auto}
 #map.olcuyor{cursor:crosshair}
 .leaflet-control-layers-expanded{padding:8px 12px;border-radius:12px;background:#fff;color:#1b2b27}
 .leaflet-control-layers-base{display:flex;flex-direction:column;gap:2px}
@@ -347,7 +347,7 @@ summary{cursor:pointer;font-weight:700}
 "use strict";
 const ILCELER_STATIK=["Akkışla","Bünyan","Develi","Felahiye","Hacılar","İncesu","Kocasinan","Melikgazi","Özvatan","Pınarbaşı","Sarıoğlan","Sarız","Talas","Tomarza","Yahyalı","Yeşilhisar"];
 const MERKEZ={lat:38.7205,lon:35.4826};
-const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", LSKEY="kpr-v3", SURUM="r67 · 01.11.2026 22:40";
+const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", LSKEY="kpr-v3", SURUM="r68 · 01.11.2026 22:50";
 const $=id=>document.getElementById(id);
 
 /* ---------- Giris kaydi (Google Formu) ---------- */
@@ -979,14 +979,12 @@ const olc={on:false,tur:"alan",pts:[],lyr:null,panel:null};
 function olcPanelKur(){
   olc.lyr=L.layerGroup().addTo(map);
   const p=document.createElement("div");p.className="mah-panel olc-panel";p.id="olcPanel";p.hidden=true;
-  p.innerHTML='<div class="olc-bas"><b>Ölçüm</b><button type="button" class="mah-x" id="olcKapat" aria-label="Kapat">✕</button></div>'+
-    '<div class="olc-sec"><label><input type="radio" name="olcTur" value="alan" checked> Alan</label><label><input type="radio" name="olcTur" value="mesafe"> Mesafe</label></div>'+
+  p.innerHTML='<div class="olc-bas"><div class="olc-sec"><label><input type="radio" name="olcTur" value="alan" checked> Alan</label><label><input type="radio" name="olcTur" value="mesafe"> Mesafe</label></div><button type="button" class="mah-x" id="olcKapat" aria-label="Kapat">✕</button></div>'+
     '<div class="olc-sonuc" id="olcSonuc">Haritada noktalara dokunun.</div>'+
-    '<div class="olc-dug"><button type="button" class="mah-x" id="olcGeri">Geri al</button><button type="button" class="mah-x" id="olcSil">Temizle</button></div>';
+    '<div class="olc-dug"><button type="button" class="mah-x" id="olcSil">Temizle</button></div>';
   map.getContainer().appendChild(p);olc.panel=p;
   L.DomEvent.disableClickPropagation(p);L.DomEvent.disableScrollPropagation(p);
   $("olcKapat").onclick=olcKapat;
-  $("olcGeri").onclick=()=>{olc.pts.pop();olcCiz();};
   $("olcSil").onclick=()=>{olc.pts=[];olcCiz();};
   p.querySelectorAll('input[name=olcTur]').forEach(r=>r.onchange=()=>{olc.tur=r.value;olcCiz();});
 }
@@ -998,13 +996,16 @@ function olcCiz(){
   olc.lyr.clearLayers();const P=olc.pts,alan=olc.tur==="alan";
   if(P.length>1){if(alan&&P.length>2)L.polygon(P,{color:"#FFEB3B",weight:3,fillColor:"#FFEB3B",fillOpacity:.2,interactive:false}).addTo(olc.lyr);
     else L.polyline(P,{color:"#FFEB3B",weight:3,interactive:false}).addTo(olc.lyr);}
-  P.forEach(q=>L.circleMarker(q,{radius:5,color:"#000",weight:1.5,fillColor:"#FFEB3B",fillOpacity:1,interactive:false}).addTo(olc.lyr));
+  P.forEach((q,i)=>{ // noktaya yeniden dokununca o nokta silinir; genis gorunmez dokunma alani
+    const sil=()=>{olc.pts.splice(i,1);olcCiz();};
+    L.circleMarker(q,{radius:16,stroke:false,fillOpacity:0,bubblingMouseEvents:false}).on("click",sil).addTo(olc.lyr);
+    L.circleMarker(q,{radius:6,color:"#000",weight:1.5,fillColor:"#FFEB3B",fillOpacity:1,bubblingMouseEvents:false}).on("click",sil).addTo(olc.lyr);});
   let uz=0;for(let i=1;i<P.length;i++)uz+=hav({lat:P[i-1][0],lon:P[i-1][1]},{lat:P[i][0],lon:P[i][1]})*1000;
   let t;
-  if(!P.length)t=alan?"Alanın köşelerine sırayla dokunun.":"Ölçülecek yol boyunca noktalara dokunun.";
+  if(!P.length)t=alan?"Alanın köşelerine sırayla dokunun; silmek için noktaya yeniden dokunun.":"Noktalara sırayla dokunun; silmek için noktaya yeniden dokunun.";
   else if(alan){if(P.length<3)t=`${P.length} nokta · en az 3 nokta gerekli`;
     else{const R=P.map(q=>[q[1]-P[0][1],q[0]]);R.push(R[0]);const a=geoAreaM2(R);const cevre=uz+hav({lat:P[P.length-1][0],lon:P[P.length-1][1]},{lat:P[0][0],lon:P[0][1]})*1000;
-      t=`Alan: ${fmtDa(a)} (${fmtInt(a)} m²) · çevre ${fmtM(cevre)}`;}}
+      t=`Alan: ${fmtDa(a)} · çevre ${fmtM(cevre)}`;}}
   else t=P.length<2?"1 nokta · devam edin":`Mesafe: ${fmtM(uz)} · ${P.length} nokta`;
   $("olcSonuc").textContent=t;
 }
