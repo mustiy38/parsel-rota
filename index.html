@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Kayseri Parsel Rota</title>
 <meta name="theme-color" content="#134A40">
-<meta name="version" content="r59">
+<meta name="version" content="r60">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
@@ -328,7 +328,7 @@ summary{cursor:pointer;font-weight:700}
 "use strict";
 const ILCELER_STATIK=["Akkışla","Bünyan","Develi","Felahiye","Hacılar","İncesu","Kocasinan","Melikgazi","Özvatan","Pınarbaşı","Sarıoğlan","Sarız","Talas","Tomarza","Yahyalı","Yeşilhisar"];
 const MERKEZ={lat:38.7205,lon:35.4826};
-const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", LSKEY="kpr-v3", SURUM="r59 · 01.11.2026 10:50";
+const KEY="kpr-v2", LKEY="kpr-lists-v1", KKEY="kpr-key", LSKEY="kpr-v3", SURUM="r60 · 01.11.2026 11:10";
 const $=id=>document.getElementById(id);
 
 /* ---------- Giris kaydi (Google Formu) ---------- */
@@ -2031,7 +2031,7 @@ function drawAllLegs(){
 function liveOpen(p){liveStart([p]);}
 function liveStart(stops){
   liveInit();if(!live.map||!stops.length)return;
-  Object.assign(live,{stops,cur:0,legs:new Array(stops.length).fill(null),legErr:new Array(stops.length).fill(""),legMsg:"",p:stops[0],first:true,offCount:0,busy:false,said:{},arrived:false,follow:true});
+  Object.assign(live,{stops,cur:0,legs:new Array(stops.length).fill(null),legErr:new Array(stops.length).fill(""),legMsg:"",p:stops[0],first:true,offCount:0,busy:false,tekrar:false,said:{},arrived:false,follow:true});
   if(live.tracks)live.tracks.clearLayers();live.tiles=new Set();live.graph=null;live.routeLyr.clearLayers();live.rnCiz=new Set();live.rnNesil=rn.nesil;liveAgCiz();izSifirla();liveSecenek(null);
   draw.on=false;draw.pts=[];if(draw.lyr)draw.lyr.clearLayers();drawUI();teamLoad().then(teamDraw);
   $("live").hidden=false;$("liveInfo").textContent="GPS bekleniyor…";$("liveInfo").className="info";$("liveSub").textContent="";$("liveNext").hidden=true;followUI();voiceUI();liveTitle();
@@ -2050,17 +2050,18 @@ function liveClose(){
   if(live.wake){try{live.wake.release();}catch(e){}live.wake=null;}
   try{speechSynthesis&&speechSynthesis.cancel();}catch(e){}
 }
-async function liveRecalc(all){
-  if(!live.p||!me||live.busy)return;live.busy=true;const st=live.stops,cur=live.cur;
-  $("liveSub").textContent="Rota hesaplanıyor…";
+async function liveRecalc(all,kalanlar){ // kalanlar: mevcut bacak korunur, yalniz eksik bacaklar hesaplanir
+  if(!live.p||!me||live.busy){if(live.p&&me&&live.busy)live.tekrar=true;return;}live.busy=true;const st=live.stops,cur=live.cur;
   try{
+    if(!(kalanlar&&live.legs[cur])){
+    $("liveSub").textContent="Rota hesaplanıyor…";
     const prog=(i,n)=>{$("liveSub").textContent=`Yol ağı yükleniyor ${i}/${n}…`;};
     live.legs[cur]=await computeLeg(me,st[cur],prog,true);
     if(live.stops!==st)return;
     live.offCount=0;live.said={};liveSecenek(live.legs[cur]);liveAgCiz();drawAllLegs();
-    if(live.first){live.first=false;let b=L.latLngBounds(live.legs[cur].pts);(live.legs[cur].alts||[]).forEach(a=>b.extend(L.latLngBounds(a.pts)));live.map.fitBounds(b,{padding:[40,40],maxZoom:17});} // diger rotalar da gorunsun
+    if(live.first){live.first=false;let b=L.latLngBounds(live.legs[cur].pts);(live.legs[cur].alts||[]).forEach(a=>b.extend(L.latLngBounds(a.pts)));live.map.invalidateSize();live.map.fitBounds(b,{padding:[40,40],maxZoom:17});live.fitZaman=Date.now();} // diger rotalar da gorunsun; takip 8 sn sonra surer
     const t=live.legs[cur].total,ns=(live.secenek||[]).length-1;konus(`${st.length>1?harf(cur)+" durağına ":""}rota hazır, ${t>=1000?fmt(t/1000)+" kilometre":fmtInt(t)+" metre"}.${ns>0?` Haritada gri çizgili ${ns} başka rota var; dokunarak seçebilirsiniz.`:""}`);
-    liveTick();
+    liveTick();}
     if(all!==false){
       for(let tur=0;tur<2;tur++){
         for(let i=cur+1;i<st.length;i++){if(live.stops!==st)return;if(live.legs[i])continue;
@@ -2072,7 +2073,26 @@ async function liveRecalc(all){
       live.legMsg="";liveTick();
     }
   }catch(e){live.legs[cur]=null;liveSecenek(null);$("liveSub").textContent="Rota alınamadı: "+e.message+". Düz çizgiyi izleyin.";}
-  finally{live.busy=false;liveTick();}
+  finally{live.busy=false;liveTick();if(live.tekrar){live.tekrar=false;liveRecalc(true,true);}}
+}
+function liveEkle(p){ // navigasyon acikken listeye eklenen parsel: kalan duraklar yeni parselle birlikte en kisa siraya dizilir, eksik bacaklar hesaplanir
+  if(!live.map||$("live").hidden||!hasPos(p)||live.stops.includes(p))return false;
+  const bitti=live.stops.slice(0,live.cur),kalan=live.stops.slice(live.cur).concat([p]);
+  const bas=me||(live.cur>0?yolSonu(live.legs[live.cur-1],live.stops[live.cur-1]):live.stops[live.cur]);
+  const sira=optimize(kalan,bas);
+  const eskiHedef=live.p;
+  const stops=bitti.concat(sira),legs=new Array(stops.length).fill(null),legErr=new Array(stops.length).fill("");
+  for(let i=0;i<live.cur;i++){legs[i]=live.legs[i];legErr[i]=live.legErr[i];}
+  if(sira[0]===eskiHedef){legs[live.cur]=live.legs[live.cur];legErr[live.cur]=live.legErr[live.cur];}
+  Object.assign(live,{stops,legs,legErr,p:stops[live.cur],legMsg:""});
+  if(sira[0]!==eskiHedef){live.arrived=false;live.said={};live.offCount=0;liveSecenek(null);$("liveNext").hidden=true;}
+  // ana listedeki sira da navigasyon sirasina uyar
+  const digerleri=state.items.filter(x=>!stops.includes(x));state.items=stops.filter(x=>state.items.includes(x)).concat(digerleri);save();render();
+  liveTitle();drawStops();drawAllLegs();
+  const k=stops.indexOf(p);
+  konus(`Yeni parsel rotaya eklendi, ${harf(k)} durağı.${sira[0]!==eskiHedef?" Sıradaki durak değişti, rota yeniden hesaplanıyor.":""}`);
+  if(live.busy)live.tekrar=true;else liveRecalc(true,true);
+  return true;
 }
 function liveUpdate(pos){
   const p=live.p;if(!p)return;
@@ -2085,7 +2105,7 @@ function liveUpdate(pos){
   else{live.me.setLatLng([m.lat,m.lon]);live.me.setIcon(ic);live.acc.setLatLng([m.lat,m.lon]).setRadius(pos.coords.accuracy||0);}
   if(!live.legs[live.cur]&&!live.busy)liveRecalc(true);
   liveTick(pos.coords.accuracy||0);
-  if(live.follow&&!live.first){live.map.setView([m.lat,m.lon],Math.max(live.map.getZoom(),16),{animate:true});}
+  if(live.follow&&!live.first&&Date.now()-(live.fitZaman||0)>8000){live.map.setView([m.lat,m.lon],Math.max(live.map.getZoom(),16),{animate:true});}
 }
 function kalanToplam(fromCur){let t=fromCur;for(let i=live.cur+1;i<live.legs.length;i++)if(live.legs[i])t+=live.legs[i].total;return t;}
 function liveTick(acc){
@@ -2257,8 +2277,9 @@ async function snrListeyeEkle(f,btn){
   if(p.alan==null&&f.alan)p.alan=f.alan;if(!p.nitelik&&f.nitelik)p.nitelik=f.nitelik;
   const h=snrHalka(f);p.ring=h.ring;if(h.halkalar)p.halkalar=h.halkalar;p.sinir="ok";
   const ok=ekle(p,true);
-  btn.textContent=ok?`Listeye eklendi · sıra ${active().indexOf(p)+1}`:(kilitAcik()?"Zaten listede":"Veri kilitli");
-  if(live.map&&!$("live").hidden)drawStops();
+  const navda=ok&&liveEkle(p);
+  btn.textContent=ok?(navda?`Rotaya eklendi · ${harf(live.stops.indexOf(p))} durağı`:`Listeye eklendi · sıra ${active().indexOf(p)+1}`):(kilitAcik()?"Zaten listede":"Veri kilitli");
+  if(live.map&&!$("live").hidden&&!navda)drawStops();
 }
 
 /* ---------- Cevrimdisi paket: ilce parselleri + yol agi + parsel sinirlari + dusuk cozunurluklu uydu ---------- */
@@ -2342,7 +2363,7 @@ $("clearYes").onclick=()=>{$("clearConfirm").hidden=true;if(kilitli($("shareMsg"
 $("fitBtn").addEventListener("click",()=>{if(!listeAcik)kilitUyar($("mapMsg"));});
 
 if("serviceWorker" in navigator){try{navigator.serviceWorker.register("sw.js").catch(()=>{});}catch(e){}}
-if(location.search.includes("test=1"))window.__kpr={rnRota,rnAgYukle,rn,RN_KY_SON,rnYakin,yolNoktasiRn}; // yalniz otomatik testler icin
+if(location.search.includes("test=1"))window.__kpr={rnRota,rnAgYukle,rn,RN_KY_SON,rnYakin,yolNoktasiRn,live}; // yalniz otomatik testler icin
 load();
 try{listeAciliyor=!!localStorage.getItem(KKEY);}catch(e){} // kayitli anahtar varsa liste birazdan kendiliginden acilir
 console.log("Kayseri Parsel Rota sürüm "+SURUM);
